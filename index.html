@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Builder - Text Adventure</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="description" content="Choice-driven text-based city builder game">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="bg-canvas"></canvas>
+        <div id="ui-overlay">
+            <header>
+                <h1>ГОРОД <span id="city-name">НОВЫЙ РАССВЕТ</span></h1>
+                <div id="stats-bar">
+                    <div class="stat"><span class="stat-label">День:</span> <span id="day-counter">1</span></div>
+                    <div class="stat"><span class="stat-label">Население:</span> <span id="population">10</span></div>
+                    <div class="stat"><span class="stat-label">Золото:</span> <span id="gold">100</span></div>
+                    <div class="stat"><span class="stat-label">Еда:</span> <span id="food">50</span></div>
+                    <div class="stat"><span class="stat-label">Древесина:</span> <span id="wood">30</span></div>
+                    <div class="stat"><span class="stat-label">Камень:</span> <span id="stone">20</span></div>
+                </div>
+            </header>
+            
+            <main id="narrative-panel">
+                <div id="event-icon" class="icon-container">
+                    <div class="icon">🏰</div>
+                </div>
+                <div id="narrative-text">
+                    <p>Добро пожаловать в новый мир! Вы основали небольшое поселение на берегу реки.</p>
+                    <p>Вокруг вас густой лес, богатый дичью и древесиной. Недалеко виднеются холмы с залежами камня.</p>
+                    <p>Жители с надеждой смотрят на вас, ожидая ваших решений...</p>
+                </div>
+            </main>
+            
+            <div id="choices-panel">
+                <button class="choice-btn" data-choice="0">
+                    <span class="choice-icon">🏗️</span>
+                    <span class="choice-text">Построить жилые дома</span>
+                    <span class="choice-cost">(-20 древесины, -10 камня)</span>
+                </button>
+                <button class="choice-btn" data-choice="1">
+                    <span class="choice-icon">🌾</span>
+                    <span class="choice-text">Развить сельское хозяйство</span>
+                    <span class="choice-cost">(-15 золота, +20 еды)</span>
+                </button>
+                <button class="choice-btn" data-choice="2">
+                    <span class="choice-icon">⛏️</span>
+                    <span class="choice-text">Отправить expedition в горы</span>
+                    <span class="choice-cost">(Рискованно!)</span>
+                </button>
+                <button class="choice-btn" data-choice="3">
+                    <span class="choice-icon">💰</span>
+                    <span class="choice-text">Торговать с купеческой караваном</span>
+                    <span class="choice-cost">(+30 золота, -15 еды)</span>
+                </button>
+            </div>
+            
+            <div id="history-panel">
+                <h3>📜 Хроника поселения</h3>
+                <ul id="history-list">
+                    <li>Основано поселение "Новый Рассвет"</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div id="notification" class="hidden"></div>
+    <div id="game-over-screen" class="hidden">
+        <div class="game-over-content">
+            <h2>ИГРА ОКОНЧЕНА</h2>
+            <p id="game-over-message"></p>
+            <button id="restart-btn">НАЧАТЬ ЗАНОВО</button>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/gameState.js"></script>
+    <script src="js/system.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
