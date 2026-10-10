@@ -458,8 +458,7 @@ class CityBuilderGame {
             food: document.getElementById('food'),
             wood: document.getElementById('wood'),
             stone: document.getElementById('stone'),
-            storyText: document.getElementById('story-text'),
-            eventIcon: document.getElementById('event-icon'),
+            historyList: document.getElementById('history-list'),
             choicesPanel: document.getElementById('choices-panel'),
             notification: document.getElementById('notification'),
             gameOverScreen: document.getElementById('game-over-screen'),
@@ -492,19 +491,22 @@ class CityBuilderGame {
         if (this.uiElements.stone) {
             this.uiElements.stone.textContent = state.resources.stone;
         }
+        
+        // Update history list
+        if (this.uiElements.historyList) {
+            this.uiElements.historyList.innerHTML = '';
+            state.history.slice(0, 20).forEach(event => {
+                const li = document.createElement('li');
+                li.textContent = event;
+                this.uiElements.historyList.appendChild(li);
+            });
+            // Scroll to top
+            this.uiElements.historyList.parentElement.scrollTop = 0;
+        }
     }
 
     generateNarrative() {
         const narrative = this.gameSystem.generateFullNarrative();
-        
-        if (this.uiElements.storyText) {
-            this.uiElements.storyText.innerHTML = `<p>${narrative.title}</p><p>${narrative.description}</p>`;
-        }
-
-        if (this.uiElements.eventIcon) {
-            this.uiElements.eventIcon.innerHTML = `<div class="icon">${narrative.icon || '🏰'}</div>`;
-        }
-
         this.updateChoices(narrative.choices);
     }
 
