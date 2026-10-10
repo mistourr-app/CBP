@@ -195,6 +195,17 @@ class GameSystem {
             }
         }
 
+        // Ensure "Подождать" is always available as the last option
+        const hasWait = uniqueChoices.some(c => c.action === 'wait');
+        if (!hasWait) {
+            // Replace the last choice with wait if we have 4 choices
+            if (uniqueChoices.length >= 4) {
+                uniqueChoices[3] = { text: "Подождать", action: "wait", cost: "" };
+            } else {
+                uniqueChoices.push({ text: "Подождать", action: "wait", cost: "" });
+            }
+        }
+
         return uniqueChoices.slice(0, 4);
     }
 

@@ -52,15 +52,22 @@ class GameState {
 
         // Building requirements (workers per building)
         this.buildingRequirements = {
-            houses: 0,
             farms: 2,
             lumberMills: 2,
             quarries: 2,
             markets: 3,
             temples: 1,
-            schools: 1,
-            walls: 0,
-            towers: 0
+            schools: 1
+        };
+
+        // Production rates per worker
+        this.productionRates = {
+            farms: { food: 5 },
+            lumberMills: { wood: 8 },
+            quarries: { stone: 6 },
+            markets: { gold: 10 },
+            temples: { faith: 2 },
+            schools: { knowledge: 0.5 }
         };
 
         // Technologies
@@ -153,6 +160,26 @@ class GameState {
         this.stats = { ...state.stats };
     }
 
+    // Auto-assign workers to buildings
+    autoAssignWorkers() {
+        let changed = false;
+        
+        // For each building type, assign workers up to capacity
+        for (const buildingType of Object.keys(this.buildingRequirements)) {
+            const maxWorkers = this.getMaxWorkers(buildingType);
+            const currentWorkers = this.workers[buildingType] || 0;
+            const available = this.availableWorkers;
+            
+            if (available > 0 && currentWorkers < maxWorkers) {
+                const toHire = Math.min(available, maxWorkers - currentWorkers);
+                this.workers[buildingType] = (this.workers[buildingType] || 0) + toHire;
+                changed = true;
+            }
+        }
+        
+        return changed;
+    }
+
     // Get available workers
     get availableWorkers() {
         return Math.max(0, this.resources.population - this.getEmployedWorkers());
@@ -167,14 +194,55 @@ class GameState {
         return total;
     }
 
-    // Get max workers for a building type
+    // Get total worker capacity for a building type
     getMaxWorkers(buildingType) {
+        return this.buildings[buildingType] * this.buildingRequirements[buildingType];
+    }
+
+    // Get total worker capacity across all buildings of a type
+    getTotalCapacity(buildingType) {
         return this.buildings[buildingType] * this.buildingRequirements[buildingType];
     }
 
     // Get current workers for a building type
     getCurrentWorkers(buildingType) {
         return this.workers[buildingType] || 0;
+    }
+
+    // Get production per turn for a resource
+    getProduction(resource) {
+        let production = 0;
+        
+        for (const [buildingType, rate] of Object.entries(this.productionRates)) {
+            if (rate[resource]) {
+                const workers = this.workers[buildingType] || 0;
+                let baseProduction = workers * rate[resource];
+                
+                // Apply technology bonuses
+                if (resource === 'food' && this.technologies.advancedFarming) {
+                    baseProduction *= 1.5;
+                }
+                if (resource === 'wood' && this.technologies.lumberProcessing) {
+                    baseProduction *= 1.5;
+                }
+                if (resource === 'stone' && this.technologies.stoneMasonry) {
+                    baseProduction *= 1.5;
+                }
+                if (resource === 'gold' && this.technologies.tradeRoutes) {
+                    baseProduction *= 1.5;
+                }
+                
+                // Apply season bonuses
+                if (resource === 'food') {
+                    if (this.season === "Зима") baseProduction *= 0.3;
+                    if (this.season === "Лето") baseProduction *= 1.2;
+                }
+                
+                production += baseProduction;
+            }
+        }
+        
+        return Math.floor(production);
     }
 
     nextDay() {
@@ -186,6 +254,9 @@ class GameState {
             this.season = seasons[(currentIndex + 1) % seasons.length];
             if (this.season === "Весна") this.year++;
         }
+
+        // Auto-assign new workers
+        this.autoAssignWorkers();
 
         this.consumeResources();
         this.produceResources();
@@ -437,7 +508,7 @@ class GameState {
     }
 
     buildFarms() {
-        if (this.resources.gold >= 15 && this.resources.wood >= 10 && this.availableWorkers > 0) {
+        if (this.resources.gold >= 15 && this.resources.wood >= 10) {
             this.resources.gold -= 15;
             this.resources.wood -= 10;
             this.buildings.farms++;
@@ -449,7 +520,7 @@ class GameState {
     }
 
     buildLumberMill() {
-        if (this.resources.gold >= 20 && this.resources.wood >= 15 && this.availableWorkers > 0) {
+        if (this.resources.gold >= 20 && this.resources.wood >= 15) {
             this.resources.gold -= 20;
             this.resources.wood -= 15;
             this.buildings.lumberMills++;
@@ -461,7 +532,7 @@ class GameState {
     }
 
     buildQuarry() {
-        if (this.resources.gold >= 25 && this.resources.wood >= 10 && this.resources.stone >= 5 && this.availableWorkers > 0) {
+        if (this.resources.gold >= 25 && this.resources.wood >= 10 && this.resources.stone >= 5) {
             this.resources.gold -= 25;
             this.resources.wood -= 10;
             this.resources.stone -= 5;
@@ -474,7 +545,7 @@ class GameState {
     }
 
     buildMarket() {
-        if (this.resources.gold >= 30 && this.resources.wood >= 20 && this.resources.stone >= 10 && this.availableWorkers >= 3) {
+        if (this.resources.gold >= 30 && this.resources.wood >= 20 && this.resources.stone >= 10) {
             this.resources.gold -= 30;
             this.resources.wood -= 20;
             this.resources.stone -= 10;
@@ -487,7 +558,7 @@ class GameState {
     }
 
     buildTemple() {
-        if (this.resources.gold >= 50 && this.resources.wood >= 30 && this.resources.stone >= 20 && this.availableWorkers > 0) {
+        if (this.resources.gold >= 50 && this.resources.wood >= 30 && this.resources.stone >= 20) {
             this.resources.gold -= 50;
             this.resources.wood -= 30;
             this.resources.stone -= 20;
@@ -500,7 +571,7 @@ class GameState {
     }
 
     buildSchool() {
-        if (this.resources.gold >= 40 && this.resources.wood >= 25 && this.availableWorkers > 0) {
+        if (this.resources.gold >= 40 && this.resources.wood >= 25) {
             this.resources.gold -= 40;
             this.resources.wood -= 25;
             this.buildings.schools++;
@@ -537,55 +608,10 @@ class GameState {
     }
 
     // Worker management methods
-    hireFarmWorker() {
-        if (this.availableWorkers > 0 && this.workers.farms < this.getMaxWorkers('farms')) {
-            this.workers.farms++;
-            this.addToHistory(`👨‍🌾 Нанят рабочий на ферму`);
-            return true;
-        }
-        return false;
-    }
-
-    hireLumberMillWorker() {
-        if (this.availableWorkers > 0 && this.workers.lumberMills < this.getMaxWorkers('lumberMills')) {
-            this.workers.lumberMills++;
-            this.addToHistory(`👨‍🌳 Нанят рабочий на лесопилку`);
-            return true;
-        }
-        return false;
-    }
-
-    hireQuarryWorker() {
-        if (this.availableWorkers > 0 && this.workers.quarries < this.getMaxWorkers('quarries')) {
-            this.workers.quarries++;
-            this.addToHistory(`👨⛏️ Нанят рабочий на карьер`);
-            return true;
-        }
-        return false;
-    }
-
-    hireMarketWorker() {
-        if (this.availableWorkers > 0 && this.workers.markets < this.getMaxWorkers('markets')) {
-            this.workers.markets++;
-            this.addToHistory(`👨‍💼 Нанят рабочий на рынок`);
-            return true;
-        }
-        return false;
-    }
-
-    hireTempleWorker() {
-        if (this.availableWorkers > 0 && this.workers.temples < this.getMaxWorkers('temples')) {
-            this.workers.temples++;
-            this.addToHistory(`👨‍🏫 Нанят служитель в храм`);
-            return true;
-        }
-        return false;
-    }
-
-    hireSchoolWorker() {
-        if (this.availableWorkers > 0 && this.workers.schools < this.getMaxWorkers('schools')) {
-            this.workers.schools++;
-            this.addToHistory(`👩‍🏫 Нанят учитель в школу`);
+    hireWorker(buildingType) {
+        if (this.availableWorkers > 0 && this.workers[buildingType] < this.getMaxWorkers(buildingType)) {
+            this.workers[buildingType] = (this.workers[buildingType] || 0) + 1;
+            this.addToHistory(`👨‍🌾 Нанят рабочий на ${this.getBuildingName(buildingType)}`);
             return true;
         }
         return false;
@@ -602,12 +628,12 @@ class GameState {
 
     getBuildingName(buildingType) {
         const names = {
-            farms: "фермы",
-            lumberMills: "лесопилки",
-            quarries: "карьера",
-            markets: "рынка",
-            temples: "храма",
-            schools: "школы"
+            farms: "ферму",
+            lumberMills: "лесопилку",
+            quarries: "карьер",
+            markets: "рынок",
+            temples: "храм",
+            schools: "школу"
         };
         return names[buildingType] || buildingType;
     }
@@ -747,12 +773,12 @@ class GameState {
             buildSchool: () => this.buildSchool(),
             buildWalls: () => this.buildWalls(),
             buildTower: () => this.buildTower(),
-            hireFarmWorker: () => this.hireFarmWorker(),
-            hireLumberMillWorker: () => this.hireLumberMillWorker(),
-            hireQuarryWorker: () => this.hireQuarryWorker(),
-            hireMarketWorker: () => this.hireMarketWorker(),
-            hireTempleWorker: () => this.hireTempleWorker(),
-            hireSchoolWorker: () => this.hireSchoolWorker(),
+            hireFarmWorker: () => this.hireWorker('farms'),
+            hireLumberMillWorker: () => this.hireWorker('lumberMills'),
+            hireQuarryWorker: () => this.hireWorker('quarries'),
+            hireMarketWorker: () => this.hireWorker('markets'),
+            hireTempleWorker: () => this.hireWorker('temples'),
+            hireSchoolWorker: () => this.hireWorker('schools'),
             fireFarmWorker: () => this.fireWorker('farms'),
             fireLumberMillWorker: () => this.fireWorker('lumberMills'),
             fireQuarryWorker: () => this.fireWorker('quarries'),

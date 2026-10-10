@@ -452,12 +452,13 @@ class CityBuilderGame {
     initUI() {
         this.uiElements = {
             cityName: document.getElementById('city-name'),
-            dayCounter: document.getElementById('day-counter'),
-            population: document.getElementById('population'),
-            gold: document.getElementById('gold'),
-            food: document.getElementById('food'),
-            wood: document.getElementById('wood'),
-            stone: document.getElementById('stone'),
+            dayCounter: document.getElementById('stat-day'),
+            population: document.getElementById('stat-population'),
+            workers: document.getElementById('stat-workers'),
+            gold: document.getElementById('stat-gold'),
+            food: document.getElementById('stat-food'),
+            wood: document.getElementById('stat-wood'),
+            stone: document.getElementById('stat-stone'),
             historyList: document.getElementById('history-list'),
             choicesPanel: document.getElementById('choices-panel'),
             notification: document.getElementById('notification'),
@@ -474,22 +475,30 @@ class CityBuilderGame {
             this.uiElements.cityName.textContent = state.cityName;
         }
         if (this.uiElements.dayCounter) {
-            this.uiElements.dayCounter.textContent = state.day;
+            this.uiElements.dayCounter.innerHTML = `📅${state.day}`;
         }
         if (this.uiElements.population) {
-            this.uiElements.population.textContent = `${state.resources.population}/${state.resources.maxPopulation} (свободно: ${state.availableWorkers})`;
+            this.uiElements.population.innerHTML = `👥${state.resources.population}/${state.resources.maxPopulation}`;
         }
-        if (this.uiElements.gold) {
-            this.uiElements.gold.textContent = state.resources.gold;
+        if (this.uiElements.workers) {
+            const employed = state.getEmployedWorkers();
+            this.uiElements.workers.innerHTML = `👷${employed}/${state.resources.population}`;
         }
         if (this.uiElements.food) {
-            this.uiElements.food.textContent = state.resources.food;
+            const foodProd = state.getProduction('food');
+            this.uiElements.food.innerHTML = `🍞${state.resources.food} +${foodProd}`;
         }
         if (this.uiElements.wood) {
-            this.uiElements.wood.textContent = state.resources.wood;
+            const woodProd = state.getProduction('wood');
+            this.uiElements.wood.innerHTML = `🪵${state.resources.wood} +${woodProd}`;
         }
         if (this.uiElements.stone) {
-            this.uiElements.stone.textContent = state.resources.stone;
+            const stoneProd = state.getProduction('stone');
+            this.uiElements.stone.innerHTML = `🪨${state.resources.stone} +${stoneProd}`;
+        }
+        if (this.uiElements.gold) {
+            const goldProd = state.getProduction('gold');
+            this.uiElements.gold.innerHTML = `💰${state.resources.gold} +${goldProd}`;
         }
         
         // Update history list

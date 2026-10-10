@@ -92,11 +92,12 @@ header h1 {
 
 .stat {
     background: rgba(22, 33, 62, 0.7);
-    padding: 5px 8px;
+    padding: 4px 6px;
     border-radius: 6px;
     font-size: 0.75rem;
     border: 1px solid rgba(255, 255, 255, 0.2);
     pointer-events: auto;
+    white-space: nowrap;
 }
 
 .stat-label {
@@ -366,10 +367,12 @@ header h1 {
     #stats-bar {
         flex-direction: row;
         gap: 4px;
+        flex-wrap: wrap;
+        justify-content: center;
     }
     
     .stat {
-        padding: 4px 6px;
+        padding: 3px 5px;
         font-size: 0.7rem;
     }
     
