@@ -751,6 +751,16 @@ class CityBuilderGame {
 // Initialize game when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.game = new CityBuilderGame();
+    
+    // Add restart button event listener
+    const restartBtn = document.getElementById('restart-game-btn');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', () => {
+            if (window.game) {
+                window.game.restartGame();
+            }
+        });
+    }
 });
 
 // Prevent context menu on canvas
