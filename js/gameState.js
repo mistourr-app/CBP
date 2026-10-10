@@ -21,7 +21,7 @@ class GameState {
             wood: 30,
             stone: 20,
             population: 10,
-            maxPopulation: 20,
+            maxPopulation: 10,
             happiness: 80,
             faith: 50,
             knowledge: 10
@@ -29,13 +29,36 @@ class GameState {
 
         // Buildings
         this.buildings = {
-            houses: 5,
-            farms: 1,
+            houses: 1,
+            farms: 0,
             lumberMills: 0,
             quarries: 0,
             markets: 0,
             temples: 0,
             schools: 0,
+            walls: 0,
+            towers: 0
+        };
+
+        // Workers assigned to buildings
+        this.workers = {
+            farms: 0,
+            lumberMills: 0,
+            quarries: 0,
+            markets: 0,
+            temples: 0,
+            schools: 0
+        };
+
+        // Building requirements (workers per building)
+        this.buildingRequirements = {
+            houses: 0,
+            farms: 2,
+            lumberMills: 2,
+            quarries: 2,
+            markets: 3,
+            temples: 1,
+            schools: 1,
             walls: 0,
             towers: 0
         };
@@ -102,6 +125,7 @@ class GameState {
             year: this.year,
             resources: { ...this.resources },
             buildings: { ...this.buildings },
+            workers: { ...this.workers },
             technologies: { ...this.technologies },
             history: [...this.history],
             currentEvent: this.currentEvent,
@@ -119,6 +143,7 @@ class GameState {
         this.year = state.year || 1;
         this.resources = { ...state.resources };
         this.buildings = { ...state.buildings };
+        this.workers = state.workers || { farms: 0, lumberMills: 0, quarries: 0, markets: 0, temples: 0, schools: 0 };
         this.technologies = { ...state.technologies };
         this.history = [...state.history];
         this.currentEvent = state.currentEvent;
@@ -126,6 +151,30 @@ class GameState {
         this.gameOverReason = state.gameOverReason || "";
         this.victory = state.victory || false;
         this.stats = { ...state.stats };
+    }
+
+    // Get available workers
+    get availableWorkers() {
+        return Math.max(0, this.resources.population - this.getEmployedWorkers());
+    }
+
+    // Get total employed workers
+    getEmployedWorkers() {
+        let total = 0;
+        for (const [building, count] of Object.entries(this.workers)) {
+            total += count;
+        }
+        return total;
+    }
+
+    // Get max workers for a building type
+    getMaxWorkers(buildingType) {
+        return this.buildings[buildingType] * this.buildingRequirements[buildingType];
+    }
+
+    // Get current workers for a building type
+    getCurrentWorkers(buildingType) {
+        return this.workers[buildingType] || 0;
     }
 
     nextDay() {
@@ -146,6 +195,7 @@ class GameState {
     }
 
     consumeResources() {
+        // Food consumption by all population
         const foodConsumption = Math.floor(this.resources.population * 0.5);
         if (this.resources.food >= foodConsumption) {
             this.resources.food -= foodConsumption;
@@ -159,11 +209,16 @@ class GameState {
             this.addToHistory(`💀 Голод! Погибло ${deaths} жителей`);
         }
 
+        // Gold maintenance for buildings
         const maintenance = Math.floor(
-            (this.buildings.houses * 0.1 + this.buildings.farms * 0.2 + 
-             this.buildings.lumberMills * 0.3 + this.buildings.quarries * 0.3 + 
-             this.buildings.markets * 0.5 + this.buildings.temples * 0.4 + 
-             this.buildings.schools * 0.3 + this.buildings.walls * 0.2 + 
+            (this.buildings.houses * 0.1 + 
+             this.buildings.farms * 0.2 + 
+             this.buildings.lumberMills * 0.3 + 
+             this.buildings.quarries * 0.3 + 
+             this.buildings.markets * 0.5 + 
+             this.buildings.temples * 0.4 + 
+             this.buildings.schools * 0.3 + 
+             this.buildings.walls * 0.2 + 
              this.buildings.towers * 0.5) * (1 + this.day / 1000)
         );
         
@@ -174,38 +229,45 @@ class GameState {
             this.resources.happiness = Math.max(0, this.resources.happiness - 5);
         }
 
+        // Happiness decay
         this.resources.happiness = Math.max(0, this.resources.happiness - 1);
     }
 
     produceResources() {
-        let foodProduction = this.buildings.farms * 5;
+        // Farms produce food based on workers
+        let foodProduction = this.workers.farms * 5;
         if (this.technologies.advancedFarming) foodProduction *= 1.5;
         if (this.season === "Зима") foodProduction *= 0.3;
         if (this.season === "Лето") foodProduction *= 1.2;
         this.resources.food += Math.floor(foodProduction);
 
-        let woodProduction = this.buildings.lumberMills * 8;
+        // Lumber mills produce wood based on workers
+        let woodProduction = this.workers.lumberMills * 8;
         if (this.technologies.lumberProcessing) woodProduction *= 1.5;
         this.resources.wood += Math.floor(woodProduction);
 
-        let stoneProduction = this.buildings.quarries * 6;
+        // Quarries produce stone based on workers
+        let stoneProduction = this.workers.quarries * 6;
         if (this.technologies.stoneMasonry) stoneProduction *= 1.5;
         this.resources.stone += Math.floor(stoneProduction);
 
-        let goldProduction = this.buildings.markets * 10;
+        // Markets generate gold based on workers
+        let goldProduction = this.workers.markets * 10;
         if (this.technologies.tradeRoutes) goldProduction *= 1.5;
         this.resources.gold += Math.floor(goldProduction);
         this.stats.totalGoldEarned += Math.floor(goldProduction);
 
-        if (this.buildings.temples > 0) {
-            this.resources.faith = Math.min(100, this.resources.faith + this.buildings.temples * 2);
+        // Temples increase faith and happiness based on workers
+        if (this.workers.temples > 0) {
+            this.resources.faith = Math.min(100, this.resources.faith + this.workers.temples * 2);
             if (this.technologies.religion) {
-                this.resources.happiness = Math.min(100, this.resources.happiness + this.buildings.temples);
+                this.resources.happiness = Math.min(100, this.resources.happiness + this.workers.temples);
             }
         }
 
-        if (this.buildings.schools > 0) {
-            this.resources.knowledge += this.buildings.schools * 0.5;
+        // Schools increase knowledge based on workers
+        if (this.workers.schools > 0) {
+            this.resources.knowledge += this.workers.schools * 0.5;
         }
     }
 
@@ -354,7 +416,7 @@ class GameState {
 
     addToHistory(message) {
         this.history.unshift(message);
-        if (this.history.length > 10) {
+        if (this.history.length > 20) {
             this.history.pop();
         }
     }
@@ -368,82 +430,82 @@ class GameState {
             this.resources.maxPopulation += 5;
             this.resources.happiness = Math.min(100, this.resources.happiness + 5);
             this.stats.buildingsBuilt++;
-            this.addToHistory(`🏗️ Построен жилой дом (+5 max население)`);
+            this.addToHistory(`🏗️ Построен дом (+5 max население)`);
             return true;
         }
         return false;
     }
 
     buildFarms() {
-        if (this.resources.gold >= 15 && this.resources.wood >= 10) {
+        if (this.resources.gold >= 15 && this.resources.wood >= 10 && this.availableWorkers > 0) {
             this.resources.gold -= 15;
             this.resources.wood -= 10;
             this.buildings.farms++;
-            this.addToHistory(`🌾 Построена ферма`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🌾 Построена ферма`);
             return true;
         }
         return false;
     }
 
     buildLumberMill() {
-        if (this.resources.gold >= 20 && this.resources.wood >= 15) {
+        if (this.resources.gold >= 20 && this.resources.wood >= 15 && this.availableWorkers > 0) {
             this.resources.gold -= 20;
             this.resources.wood -= 15;
             this.buildings.lumberMills++;
-            this.addToHistory(`🪓 Построена лесопилка`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🪓 Построена лесопилка`);
             return true;
         }
         return false;
     }
 
     buildQuarry() {
-        if (this.resources.gold >= 25 && this.resources.wood >= 10 && this.resources.stone >= 5) {
+        if (this.resources.gold >= 25 && this.resources.wood >= 10 && this.resources.stone >= 5 && this.availableWorkers > 0) {
             this.resources.gold -= 25;
             this.resources.wood -= 10;
             this.resources.stone -= 5;
             this.buildings.quarries++;
-            this.addToHistory(`⛏️ Построен карьер`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`⛏️ Построен карьер`);
             return true;
         }
         return false;
     }
 
     buildMarket() {
-        if (this.resources.gold >= 30 && this.resources.wood >= 20 && this.resources.stone >= 10) {
+        if (this.resources.gold >= 30 && this.resources.wood >= 20 && this.resources.stone >= 10 && this.availableWorkers >= 3) {
             this.resources.gold -= 30;
             this.resources.wood -= 20;
             this.resources.stone -= 10;
             this.buildings.markets++;
-            this.addToHistory(`🏪 Построен рынок`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🏪 Построен рынок`);
             return true;
         }
         return false;
     }
 
     buildTemple() {
-        if (this.resources.gold >= 50 && this.resources.wood >= 30 && this.resources.stone >= 20) {
+        if (this.resources.gold >= 50 && this.resources.wood >= 30 && this.resources.stone >= 20 && this.availableWorkers > 0) {
             this.resources.gold -= 50;
             this.resources.wood -= 30;
             this.resources.stone -= 20;
             this.buildings.temples++;
-            this.addToHistory(`🕍 Построен храм`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🕍 Построен храм`);
             return true;
         }
         return false;
     }
 
     buildSchool() {
-        if (this.resources.gold >= 40 && this.resources.wood >= 25) {
+        if (this.resources.gold >= 40 && this.resources.wood >= 25 && this.availableWorkers > 0) {
             this.resources.gold -= 40;
             this.resources.wood -= 25;
             this.buildings.schools++;
-            this.addToHistory(`🏫 Построена школа`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🏫 Построена школа`);
             return true;
         }
         return false;
@@ -454,8 +516,8 @@ class GameState {
             this.resources.gold -= 40;
             this.resources.stone -= 30;
             this.buildings.walls++;
-            this.addToHistory(`🧱 Построена стена`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🧱 Построена стена`);
             return true;
         }
         return false;
@@ -467,79 +529,155 @@ class GameState {
             this.resources.wood -= 20;
             this.resources.stone -= 40;
             this.buildings.towers++;
-            this.addToHistory(`🗼 Построена башня`);
             this.stats.buildingsBuilt++;
+            this.addToHistory(`🗼 Построена башня`);
             return true;
         }
         return false;
     }
 
+    // Worker management methods
+    hireFarmWorker() {
+        if (this.availableWorkers > 0 && this.workers.farms < this.getMaxWorkers('farms')) {
+            this.workers.farms++;
+            this.addToHistory(`👨‍🌾 Нанят рабочий на ферму`);
+            return true;
+        }
+        return false;
+    }
+
+    hireLumberMillWorker() {
+        if (this.availableWorkers > 0 && this.workers.lumberMills < this.getMaxWorkers('lumberMills')) {
+            this.workers.lumberMills++;
+            this.addToHistory(`👨‍🌳 Нанят рабочий на лесопилку`);
+            return true;
+        }
+        return false;
+    }
+
+    hireQuarryWorker() {
+        if (this.availableWorkers > 0 && this.workers.quarries < this.getMaxWorkers('quarries')) {
+            this.workers.quarries++;
+            this.addToHistory(`👨⛏️ Нанят рабочий на карьер`);
+            return true;
+        }
+        return false;
+    }
+
+    hireMarketWorker() {
+        if (this.availableWorkers > 0 && this.workers.markets < this.getMaxWorkers('markets')) {
+            this.workers.markets++;
+            this.addToHistory(`👨‍💼 Нанят рабочий на рынок`);
+            return true;
+        }
+        return false;
+    }
+
+    hireTempleWorker() {
+        if (this.availableWorkers > 0 && this.workers.temples < this.getMaxWorkers('temples')) {
+            this.workers.temples++;
+            this.addToHistory(`👨‍🏫 Нанят служитель в храм`);
+            return true;
+        }
+        return false;
+    }
+
+    hireSchoolWorker() {
+        if (this.availableWorkers > 0 && this.workers.schools < this.getMaxWorkers('schools')) {
+            this.workers.schools++;
+            this.addToHistory(`👩‍🏫 Нанят учитель в школу`);
+            return true;
+        }
+        return false;
+    }
+
+    fireWorker(buildingType) {
+        if (this.workers[buildingType] > 0) {
+            this.workers[buildingType]--;
+            this.addToHistory(`👋 Уволен рабочий с ${this.getBuildingName(buildingType)}`);
+            return true;
+        }
+        return false;
+    }
+
+    getBuildingName(buildingType) {
+        const names = {
+            farms: "фермы",
+            lumberMills: "лесопилки",
+            quarries: "карьера",
+            markets: "рынка",
+            temples: "храма",
+            schools: "школы"
+        };
+        return names[buildingType] || buildingType;
+    }
+
     // Technology methods
     developFarming() {
-        if (this.resources.knowledge >= 20 && !this.technologies.advancedFarming) {
+        if (this.resources.knowledge >= 20 && !this.technologies.advancedFarming && this.buildings.farms > 0) {
             this.resources.knowledge -= 20;
             this.technologies.advancedFarming = true;
-            this.addToHistory(`🌱 Передовое земледелие`);
+            this.addToHistory(`🌱 Развито передовое земледелие`);
             return true;
         }
         return false;
     }
 
     developLumber() {
-        if (this.resources.knowledge >= 15 && !this.technologies.lumberProcessing) {
+        if (this.resources.knowledge >= 15 && !this.technologies.lumberProcessing && this.buildings.lumberMills > 0) {
             this.resources.knowledge -= 15;
             this.technologies.lumberProcessing = true;
-            this.addToHistory(`🪵 Обработка древесины`);
+            this.addToHistory(`🪵 Развита обработка древесины`);
             return true;
         }
         return false;
     }
 
     developMasonry() {
-        if (this.resources.knowledge >= 15 && !this.technologies.stoneMasonry) {
+        if (this.resources.knowledge >= 15 && !this.technologies.stoneMasonry && this.buildings.quarries > 0) {
             this.resources.knowledge -= 15;
             this.technologies.stoneMasonry = true;
-            this.addToHistory(`🪨 Каменная кладка`);
+            this.addToHistory(`🪨 Развита каменная кладка`);
             return true;
         }
         return false;
     }
 
     developTrade() {
-        if (this.resources.knowledge >= 25 && !this.technologies.tradeRoutes) {
+        if (this.resources.knowledge >= 25 && !this.technologies.tradeRoutes && this.buildings.markets > 0) {
             this.resources.knowledge -= 25;
             this.technologies.tradeRoutes = true;
-            this.addToHistory(`💰 Торговые маршруты`);
+            this.addToHistory(`💰 Открыты торговые маршруты`);
             return true;
         }
         return false;
     }
 
     developReligion() {
-        if (this.resources.faith >= 50 && !this.technologies.religion) {
+        if (this.resources.faith >= 50 && !this.technologies.religion && this.buildings.temples > 0) {
             this.resources.faith -= 50;
             this.technologies.religion = true;
-            this.addToHistory(`⛪ Религия`);
+            this.addToHistory(`⛪ Развита религия`);
             return true;
         }
         return false;
     }
 
     developEducation() {
-        if (this.resources.knowledge >= 30 && !this.technologies.education) {
+        if (this.resources.knowledge >= 30 && !this.technologies.education && this.buildings.schools > 0) {
             this.resources.knowledge -= 30;
             this.technologies.education = true;
-            this.addToHistory(`🎓 Образование`);
+            this.addToHistory(`🎓 Развито образование`);
             return true;
         }
         return false;
     }
 
     developFortification() {
-        if (this.resources.knowledge >= 35 && !this.technologies.fortification) {
+        if (this.resources.knowledge >= 35 && !this.technologies.fortification && this.buildings.walls > 0) {
             this.resources.knowledge -= 35;
             this.technologies.fortification = true;
-            this.addToHistory(`🛡️ Фортификация`);
+            this.addToHistory(`🛡️ Развиты фортификационные технологии`);
             return true;
         }
         return false;
@@ -592,6 +730,11 @@ class GameState {
         return false;
     }
 
+    wait() {
+        this.addToHistory(`⏳ День прошел в ожидании`);
+        return true;
+    }
+
     // Execute action by name
     executeAction(actionName) {
         const actionMap = {
@@ -604,6 +747,18 @@ class GameState {
             buildSchool: () => this.buildSchool(),
             buildWalls: () => this.buildWalls(),
             buildTower: () => this.buildTower(),
+            hireFarmWorker: () => this.hireFarmWorker(),
+            hireLumberMillWorker: () => this.hireLumberMillWorker(),
+            hireQuarryWorker: () => this.hireQuarryWorker(),
+            hireMarketWorker: () => this.hireMarketWorker(),
+            hireTempleWorker: () => this.hireTempleWorker(),
+            hireSchoolWorker: () => this.hireSchoolWorker(),
+            fireFarmWorker: () => this.fireWorker('farms'),
+            fireLumberMillWorker: () => this.fireWorker('lumberMills'),
+            fireQuarryWorker: () => this.fireWorker('quarries'),
+            fireMarketWorker: () => this.fireWorker('markets'),
+            fireTempleWorker: () => this.fireWorker('temples'),
+            fireSchoolWorker: () => this.fireWorker('schools'),
             developFarming: () => this.developFarming(),
             developLumber: () => this.developLumber(),
             developMasonry: () => this.developMasonry(),
@@ -612,7 +767,8 @@ class GameState {
             developEducation: () => this.developEducation(),
             developFortification: () => this.developFortification(),
             tradeWithMerchant: () => this.tradeWithMerchant(),
-            sendExpedition: () => this.sendExpedition()
+            sendExpedition: () => this.sendExpedition(),
+            wait: () => this.wait()
         };
         return actionMap[actionName] ? actionMap[actionName]() : false;
     }

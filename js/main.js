@@ -477,7 +477,7 @@ class CityBuilderGame {
             this.uiElements.dayCounter.textContent = state.day;
         }
         if (this.uiElements.population) {
-            this.uiElements.population.textContent = `${state.resources.population}/${state.resources.maxPopulation}`;
+            this.uiElements.population.textContent = `${state.resources.population}/${state.resources.maxPopulation} (свободно: ${state.availableWorkers})`;
         }
         if (this.uiElements.gold) {
             this.uiElements.gold.textContent = state.resources.gold;

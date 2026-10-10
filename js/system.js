@@ -15,33 +15,33 @@ class GameSystem {
         // Always available
         choices.push({ text: "Подождать", action: "wait", cost: "" });
 
-        // Building choices - always show if affordable
+        // Building choices
         if (state.resources.wood >= 20 && state.resources.stone >= 10) {
             choices.push({ text: "Построить дом", action: "buildHouses", cost: "-20 древесины, -10 камня" });
         }
 
-        if (state.resources.gold >= 15 && state.resources.wood >= 10) {
+        if (state.resources.gold >= 15 && state.resources.wood >= 10 && state.availableWorkers > 0) {
             choices.push({ text: "Построить ферму", action: "buildFarms", cost: "-15 золота, -10 древесины" });
         }
 
-        if (state.resources.gold >= 20 && state.resources.wood >= 15) {
+        if (state.resources.gold >= 20 && state.resources.wood >= 15 && state.availableWorkers > 0) {
             choices.push({ text: "Построить лесопилку", action: "buildLumberMill", cost: "-20 золота, -15 древесины" });
         }
 
-        if (state.resources.gold >= 25 && state.resources.wood >= 10 && state.resources.stone >= 5) {
+        if (state.resources.gold >= 25 && state.resources.wood >= 10 && state.resources.stone >= 5 && state.availableWorkers > 0) {
             choices.push({ text: "Построить карьер", action: "buildQuarry", cost: "-25 золота, -10 древесины, -5 камня" });
         }
 
-        // Advanced buildings - appear after certain conditions
-        if (state.buildings.houses >= 3 && state.resources.gold >= 30 && state.resources.wood >= 20 && state.resources.stone >= 10) {
+        // Advanced buildings
+        if (state.buildings.farms >= 1 && state.resources.gold >= 30 && state.resources.wood >= 20 && state.resources.stone >= 10 && state.availableWorkers >= 3) {
             choices.push({ text: "Построить рынок", action: "buildMarket", cost: "-30 золота, -20 древесины, -10 камня" });
         }
 
-        if (state.buildings.farms >= 2 && state.resources.gold >= 50 && state.resources.wood >= 30 && state.resources.stone >= 20) {
+        if (state.buildings.houses >= 3 && state.resources.gold >= 50 && state.resources.wood >= 30 && state.resources.stone >= 20 && state.availableWorkers > 0) {
             choices.push({ text: "Построить храм", action: "buildTemple", cost: "-50 золота, -30 древесины, -20 камня" });
         }
 
-        if (state.buildings.houses >= 4 && state.resources.gold >= 40 && state.resources.wood >= 25) {
+        if (state.buildings.farms >= 2 && state.resources.gold >= 40 && state.resources.wood >= 25 && state.availableWorkers > 0) {
             choices.push({ text: "Построить школу", action: "buildSchool", cost: "-40 золота, -25 древесины" });
         }
 
@@ -51,6 +51,61 @@ class GameSystem {
 
         if (state.buildings.walls >= 1 && state.resources.gold >= 60 && state.resources.wood >= 20 && state.resources.stone >= 40) {
             choices.push({ text: "Построить башню", action: "buildTower", cost: "-60 золота, -20 древесины, -40 камня" });
+        }
+
+        // Worker hiring/firing choices
+        if (state.buildings.farms >= 1) {
+            if (state.availableWorkers > 0 && state.workers.farms < state.buildings.farms * 2) {
+                choices.push({ text: "Нанять на ферму", action: "hireFarmWorker", cost: "-1 свободный житель" });
+            }
+            if (state.workers.farms > 0) {
+                choices.push({ text: "Уволить с фермы", action: "fireFarmWorker", cost: "+1 свободный житель" });
+            }
+        }
+
+        if (state.buildings.lumberMills >= 1) {
+            if (state.availableWorkers > 0 && state.workers.lumberMills < state.buildings.lumberMills * 2) {
+                choices.push({ text: "Нанять на лесопилку", action: "hireLumberMillWorker", cost: "-1 свободный житель" });
+            }
+            if (state.workers.lumberMills > 0) {
+                choices.push({ text: "Уволить с лесопилки", action: "fireLumberMillWorker", cost: "+1 свободный житель" });
+            }
+        }
+
+        if (state.buildings.quarries >= 1) {
+            if (state.availableWorkers > 0 && state.workers.quarries < state.buildings.quarries * 2) {
+                choices.push({ text: "Нанять на карьер", action: "hireQuarryWorker", cost: "-1 свободный житель" });
+            }
+            if (state.workers.quarries > 0) {
+                choices.push({ text: "Уволить с карьера", action: "fireQuarryWorker", cost: "+1 свободный житель" });
+            }
+        }
+
+        if (state.buildings.markets >= 1) {
+            if (state.availableWorkers > 0 && state.workers.markets < state.buildings.markets * 3) {
+                choices.push({ text: "Нанять на рынок", action: "hireMarketWorker", cost: "-1 свободный житель" });
+            }
+            if (state.workers.markets > 0) {
+                choices.push({ text: "Уволить с рынка", action: "fireMarketWorker", cost: "+1 свободный житель" });
+            }
+        }
+
+        if (state.buildings.temples >= 1) {
+            if (state.availableWorkers > 0 && state.workers.temples < state.buildings.temples * 1) {
+                choices.push({ text: "Нанять в храм", action: "hireTempleWorker", cost: "-1 свободный житель" });
+            }
+            if (state.workers.temples > 0) {
+                choices.push({ text: "Уволить из храма", action: "fireTempleWorker", cost: "+1 свободный житель" });
+            }
+        }
+
+        if (state.buildings.schools >= 1) {
+            if (state.availableWorkers > 0 && state.workers.schools < state.buildings.schools * 1) {
+                choices.push({ text: "Нанять в школу", action: "hireSchoolWorker", cost: "-1 свободный житель" });
+            }
+            if (state.workers.schools > 0) {
+                choices.push({ text: "Уволить из школы", action: "fireSchoolWorker", cost: "+1 свободный житель" });
+            }
         }
 
         // Technology choices
@@ -94,35 +149,50 @@ class GameSystem {
         // Filter out duplicates and limit to 4
         const uniqueChoices = [];
         const seenActions = new Set();
+        
+        // Prioritize: hire workers > build > develop > trade > expedition > wait
+        const priorityOrder = [
+            'hireFarmWorker', 'hireLumberMillWorker', 'hireQuarryWorker', 'hireMarketWorker', 'hireTempleWorker', 'hireSchoolWorker',
+            'buildHouses', 'buildFarms', 'buildLumberMill', 'buildQuarry', 'buildMarket', 'buildTemple', 'buildSchool', 'buildWalls', 'buildTower',
+            'developFarming', 'developLumber', 'developMasonry', 'developTrade', 'developReligion', 'developEducation', 'developFortification',
+            'tradeWithMerchant', 'sendExpedition', 'wait'
+        ];
+        
+        // Sort choices by priority
+        choices.sort((a, b) => {
+            const aIndex = priorityOrder.indexOf(a.action);
+            const bIndex = priorityOrder.indexOf(b.action);
+            return aIndex - bIndex;
+        });
+        
+        // Add unique choices up to 4
         for (const choice of choices) {
             if (!seenActions.has(choice.action)) {
                 seenActions.add(choice.action);
                 uniqueChoices.push(choice);
+                if (uniqueChoices.length >= 4) break;
             }
         }
 
-        // If we have less than 4 choices, add more options
-        while (uniqueChoices.length < 4) {
-            const allPossible = [
-                { text: "Подождать", action: "wait", cost: "" },
+        // If still not enough, add more options
+        if (uniqueChoices.length < 4) {
+            const fallbackOptions = [
                 { text: "Торговать", action: "tradeWithMerchant", cost: "-15 еды, +30 золота" },
-                { text: "Экспедиция", action: "sendExpedition", cost: "-10 золота" }
+                { text: "Экспедиция", action: "sendExpedition", cost: "-10 золота" },
+                { text: "Подождать", action: "wait", cost: "" }
             ];
             
-            for (const option of allPossible) {
+            for (const option of fallbackOptions) {
                 if (!seenActions.has(option.action)) {
                     if ((option.action === "tradeWithMerchant" && state.resources.food >= 15) ||
                         (option.action === "sendExpedition" && state.resources.gold >= 10) ||
                         option.action === "wait") {
                         seenActions.add(option.action);
                         uniqueChoices.push(option);
-                        break;
+                        if (uniqueChoices.length >= 4) break;
                     }
                 }
             }
-            
-            // If still not enough, break to avoid infinite loop
-            if (uniqueChoices.length >= 4 || seenActions.size >= 3) break;
         }
 
         return uniqueChoices.slice(0, 4);
@@ -137,7 +207,7 @@ class GameSystem {
         if (state.resources.food < state.resources.population * 2) {
             narratives.push({
                 title: "Голод угрожает",
-                description: `Запасы еды на исходе! Жители начинают беспокоиться. ${this.getRandomFoodWarning()}`,
+                description: `Запасы еды на исходе! ${this.getRandomFoodWarning()}`,
                 icon: "🍞"
             });
         }
@@ -145,15 +215,31 @@ class GameSystem {
         if (state.resources.happiness < 30) {
             narratives.push({
                 title: "Народ недоволен",
-                description: `Население недовольно. ${this.getRandomHappinessWarning()} Если не принять меры, может начаться восстание.`,
+                description: `Население недовольно. ${this.getRandomHappinessWarning()}`,
                 icon: "😠"
+            });
+        }
+
+        if (state.availableWorkers > 0 && state.getEmployedWorkers() === 0) {
+            narratives.push({
+                title: "Рабочие без дела",
+                description: `У вас есть свободные жители (${state.availableWorkers}), которые могли бы работать!`,
+                icon: "👷"
+            });
+        }
+
+        if (state.getEmployedWorkers() > 0 && state.availableWorkers === 0 && state.resources.population < state.resources.maxPopulation) {
+            narratives.push({
+                title: "Нехватка рабочих",
+                description: `Все жители заняты. Постройте больше домов, чтобы увеличить население!`,
+                icon: "🏠"
             });
         }
 
         if (state.resources.gold < 20) {
             narratives.push({
                 title: "Финансовый кризис",
-                description: `Казна пуста. ${this.getRandomGoldWarning()} Без золота сложно развивать город.`,
+                description: `Казна пуста. ${this.getRandomGoldWarning()}`,
                 icon: "💰"
             });
         }
@@ -162,25 +248,25 @@ class GameSystem {
         if (state.season === "Весна") {
             narratives.push({
                 title: "Весеннее пробуждение",
-                description: `Весна пришла в ваш город. ${this.getRandomSpring()} Природа просыпается, и с ней просыпаются надежды.`,
+                description: `Весна пришла в ваш город. ${this.getRandomSpring()}`,
                 icon: "🌸"
             });
         } else if (state.season === "Лето") {
             narratives.push({
                 title: "Летний зной",
-                description: `Лето в разгаре. ${this.getRandomSummer()} Жара заставляет работать усерднее.`,
+                description: `Лето в разгаре. ${this.getRandomSummer()}`,
                 icon: "☀️"
             });
         } else if (state.season === "Осень") {
             narratives.push({
                 title: "Осенний урожай",
-                description: `Осень окрасила листья в золотые тона. ${this.getRandomAutumn()} Время сбора урожая.`,
+                description: `Осень окрасила листья в золотые тона. ${this.getRandomAutumn()}`,
                 icon: "🍂"
             });
         } else if (state.season === "Зима") {
             narratives.push({
                 title: "Зимние испытания",
-                description: `Зима сурова. ${this.getRandomWinter()} Холод и снег делают жизнь сложнее.`,
+                description: `Зима сурова. ${this.getRandomWinter()}`,
                 icon: "❄️"
             });
         }
@@ -191,7 +277,7 @@ class GameSystem {
             state.resources.gold > 50) {
             narratives.push({
                 title: "Процветание",
-                description: `Город процветает! ${this.getRandomProsperity()} Жители счастливы.`,
+                description: `Город процветает! ${this.getRandomProsperity()}`,
                 icon: "🌟"
             });
         }
@@ -200,7 +286,7 @@ class GameSystem {
         if (narratives.length === 0) {
             narratives.push({
                 title: `День ${state.day} в ${state.cityName}`,
-                description: `Жизнь в ${state.cityName} идет своим чередом. ${this.getRandomDailyLife()}`,
+                description: `Свободных жителей: ${state.availableWorkers}/${state.resources.population}. ${this.getRandomDailyLife()}`,
                 icon: "🏙️"
             });
         }
