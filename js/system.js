@@ -165,8 +165,34 @@ class GameSystem {
             return aIndex - bIndex;
         });
         
-        // Add unique choices up to 4
+        // Shuffle choices within same priority groups to add randomness
+        // This ensures different choices appear each day even with same state
+        let currentPriority = -1;
+        let currentGroup = [];
+        const shuffledChoices = [];
+        
         for (const choice of choices) {
+            const choicePriority = priorityOrder.indexOf(choice.action);
+            if (choicePriority !== currentPriority) {
+                // Shuffle the previous group and add to result
+                if (currentGroup.length > 0) {
+                    this.shuffleArray(currentGroup);
+                    shuffledChoices.push(...currentGroup);
+                }
+                currentGroup = [choice];
+                currentPriority = choicePriority;
+            } else {
+                currentGroup.push(choice);
+            }
+        }
+        // Add the last group
+        if (currentGroup.length > 0) {
+            this.shuffleArray(currentGroup);
+            shuffledChoices.push(...currentGroup);
+        }
+        
+        // Add unique choices up to 4 from shuffled list
+        for (const choice of shuffledChoices) {
             if (!seenActions.has(choice.action)) {
                 seenActions.add(choice.action);
                 uniqueChoices.push(choice);
@@ -181,6 +207,9 @@ class GameSystem {
                 { text: "Экспедиция", action: "sendExpedition", cost: "-10 золота" },
                 { text: "Подождать", action: "wait", cost: "" }
             ];
+            
+            // Shuffle fallback options too
+            this.shuffleArray(fallbackOptions);
             
             for (const option of fallbackOptions) {
                 if (!seenActions.has(option.action)) {
@@ -406,6 +435,16 @@ class GameSystem {
             ...narrative,
             choices: choices
         };
+    }
+}
+
+    // Helper method to shuffle array (Fisher-Yates algorithm)
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
     }
 }
 
