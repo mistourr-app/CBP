@@ -6,6 +6,11 @@
   "private": true,
   "scripts": {
     "start": "node serve.js",
+    "start:watch": "node --watch serve.js",
+    "serve:start": "node serve-ctl.js start",
+    "serve:stop": "node serve-ctl.js stop",
+    "serve:status": "node serve-ctl.js status",
+    "serve:restart": "node serve-ctl.js restart",
     "test": "node --test"
   },
   "engines": {
