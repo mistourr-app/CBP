@@ -351,7 +351,9 @@ describe('население', () => {
 
   it('смена налога не приводит жителей, а может только отпугнуть', () => {
     const { engine, state } = makeSession();
-    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.day = 3;
+    engine.rollOffers();
+    state.data.offers.taxIndex = 3;         // 40%: народ недоволен
     const before = state.population;
 
     engine.applyAction('tax');            // 30% -> 40%, народ недоволен
@@ -490,23 +492,21 @@ describe('защита от NaN', () => {
 // --- Смена налога как действие хода ---
 
 describe('смена налога', () => {
-  it('предлагается только в дни смены налога, ставка случайна и не текущая', () => {
-    for (let day = 1; day <= 30; day += 1) {
+  it('налог доступен каждый день, ставка случайна и никогда не текущая', () => {
+    for (let day = 1; day <= 60; day += 1) {
       const { engine, state } = makeSession(day);
       state.data.day = day;
       engine.rollOffers();
 
-      const offered = engine.availableActions().some((a) => a.id === 'tax');
-      assert.equal(offered, day % BALANCE.taxChangeEveryDays === 0, `день ${day}`);
-      if (offered) {
-        assert.notEqual(state.data.offers.taxIndex, state.taxRateIndex, `день ${day}: ставка та же`);
-      }
+      const action = engine.availableActions().find((a) => a.id === 'tax');
+      assert.ok(action, `день ${day}: налог недоступен`);
+      assert.notEqual(state.data.offers.taxIndex, state.taxRateIndex, `день ${day}: ставка та же`);
     }
   });
 
   it('применяет выпавшую ставку и ресурсов не требует', () => {
     const { engine, state } = makeSession(5);
-    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.day = 4;
     engine.rollOffers();
     const target = state.data.offers.taxIndex;
     const gold = state.resource('gold');
@@ -521,27 +521,18 @@ describe('смена налога', () => {
 
   it('предложение съедается: без нового дня налога нет', () => {
     const { engine, state } = makeSession(6);
-    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.day = 4;
     engine.rollOffers();
     engine.applyAction('tax');
 
+    // Одно изменение за ход: до следующего дня предложения нет
     assert.equal(engine.applyAction('tax').ok, false);
-  });
-
-  it('в неподходящий день налог не меняется', () => {
-    const { engine, state } = makeSession();
-    state.data.day = BALANCE.taxChangeEveryDays + 1;
-    engine.rollOffers();
-    const before = state.taxRateIndex;
-
-    assert.equal(engine.applyAction('tax').ok, false);
-    assert.equal(state.taxRateIndex, before);
   });
 
   it('эффект показывает разницу с текущей ставкой: счастье и золото в день', () => {
     const { engine, state } = makeSession();
     state.setResource('population', 10);
-    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.day = 3;
     state.data.taxRateIndex = 2;            // 30%: база 0, 3 золота с жителя
     state.data.offers.taxIndex = 4;         // 50%: база -2, 5 золота с жителя
 
@@ -556,7 +547,7 @@ describe('смена налога', () => {
 
   it('новая ставка действует на счастье следующего дня', () => {
     const { engine, state } = makeSession();
-    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.day = 3;
     state.data.taxRateIndex = 0;            // 10%: база +2
     state.setHappiness(-2);
     state.data.offers.taxIndex = 1;         // 20%: база +1

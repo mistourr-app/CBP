@@ -195,11 +195,6 @@ export class Engine {
     ];
   }
 
-  /** Пора ли предлагать смену налога. */
-  #isTaxChangeDue(state) {
-    return state.day % BALANCE.taxChangeEveryDays === 0;
-  }
-
   /**
    * Здание можно выбрать сейчас: оно строится на текущем уровне поселения
    * и, если нужны рабочие, есть свободные жители.
@@ -344,21 +339,18 @@ export class Engine {
 
   /**
    * Случайные предложения на день: шанс экспедиции (каждый день) и ставка
-   * налога (в дни смены налога, не текущая). Выпадают здесь, чтобы выбор на
+   * налога (каждый день, не текущая). Выпадают здесь, чтобы выбор на
    * экране совпадал с расчётом.
    */
   rollOffers() {
     const { data } = this.state;
     data.offers.expeditionChance = this.rng.pick(BALANCE.economy.expedition.chances);
 
-    if (this.#isTaxChangeDue(this.state)) {
-      const others = BALANCE.taxes
-        .map((_, index) => index)
-        .filter((index) => index !== data.taxRateIndex);
-      data.offers.taxIndex = this.rng.pick(others);
-    } else {
-      data.offers.taxIndex = null;
-    }
+    // Налог можно менять каждый ход: новая ставка выпадает каждый день
+    const others = BALANCE.taxes
+      .map((_, index) => index)
+      .filter((index) => index !== data.taxRateIndex);
+    data.offers.taxIndex = this.rng.pick(others);
   }
 
   #develop(key) {

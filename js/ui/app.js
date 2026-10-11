@@ -109,12 +109,19 @@ class App {
     // Снимается в подписке на DAY_ADVANCED или GAME_ENDED.
     this.choices.setLocked(true);
 
+    // Что было нажато — до хода, пока список выборов ещё тот же
+    const picked = this.choices.current.find((choice) => choice.id === actionId);
+
     const { ok } = this.session.takeTurn(actionId);
 
     // Действие не прошло — день не сдвинулся, событий не было,
-    // поэтому разблокируем выборы вручную
+    // поэтому разблокируем выборы вручную. Причину показываем точную:
+    // «не хватает ресурсов» только если стоимость действительно не покрыта.
     if (!ok) {
-      if (!this.session.state.data.popup) this.screens.showToast('Недостаточно ресурсов', 'danger');
+      if (!this.session.state.data.popup) {
+        const short = picked && !picked.affordable;
+        this.screens.showToast(short ? 'Недостаточно ресурсов' : 'Сейчас это недоступно', 'danger');
+      }
       this.#syncPopup();
     }
   }
