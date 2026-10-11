@@ -14,6 +14,7 @@
 // ============================================================================
 
 import { BALANCE } from '../balance.js';
+import { formatResource } from './content.js';
 
 const { slots, priority, actions } = BALANCE.choices;
 
@@ -23,17 +24,17 @@ function priorityOf(actionId) {
   return priorityIndex.has(actionId) ? priorityIndex.get(actionId) : priority.length;
 }
 
-/** Подпись вида «20 дерево, 10 камень» для кнопки. */
+/** Подпись вида «20 древесины, 10 камня» для кнопки. */
 function describeEffects(cost = {}, gain = {}) {
   const parts = [];
 
   for (const [resource, amount] of Object.entries(cost)) {
     if (!amount) continue;
-    parts.push(`${amount} ${BALANCE.resources[resource].name.toLowerCase()}`);
+    parts.push(formatResource(amount, BALANCE.resources[resource].unit));
   }
   for (const [resource, amount] of Object.entries(gain)) {
     if (!amount) continue;
-    parts.push(`+${amount} ${BALANCE.resources[resource].name.toLowerCase()}`);
+    parts.push(`+${formatResource(amount, BALANCE.resources[resource].unit)}`);
   }
 
   return parts.join(', ');

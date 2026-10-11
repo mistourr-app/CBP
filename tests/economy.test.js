@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BALANCE } from '../js/balance.js';
+import { formatResource, plural } from '../js/game/content.js';
 import {
   applyConsumption,
   applyPopulationGrowth,
@@ -252,6 +253,36 @@ describe('сводка дня', () => {
     applyProduction(state);
 
     assert.equal(state.resource('food') - before, predicted);
+  });
+});
+
+describe('подписи ресурсов', () => {
+  it('склоняются по-русски', () => {
+    assert.equal(plural(1, 'камень', 'камня', 'камней'), 'камень');
+    assert.equal(plural(2, 'камень', 'камня', 'камней'), 'камня');
+    assert.equal(plural(5, 'камень', 'камня', 'камней'), 'камней');
+    assert.equal(plural(11, 'камень', 'камня', 'камней'), 'камней');
+    assert.equal(plural(21, 'камень', 'камня', 'камней'), 'камень');
+    assert.equal(plural(22, 'камень', 'камня', 'камней'), 'камня');
+    assert.equal(plural(101, 'камень', 'камня', 'камней'), 'камень');
+  });
+
+  it('у каждого ресурса заданы все три формы', () => {
+    for (const [key, def] of Object.entries(BALANCE.resources)) {
+      for (const form of ['one', 'few', 'many']) {
+        assert.ok(def.unit?.[form], `${key}: нет формы ${form}`);
+      }
+    }
+  });
+
+  it('подпись стоимости читается по-русски', () => {
+    assert.equal(formatResource(20, BALANCE.resources.wood.unit), '20 древесины');
+    assert.equal(formatResource(5, BALANCE.resources.stone.unit), '5 камней');
+    assert.equal(formatResource(1, BALANCE.resources.stone.unit), '1 камень');
+    assert.equal(formatResource(15, BALANCE.resources.gold.unit), '15 золота');
+    // Разряды разделяются неразрывным пробелом, чтобы число не рвалось переносом
+    assert.equal(formatResource(1000, BALANCE.resources.knowledge.unit), '1 000 знаний');
+    assert.equal(formatResource(1234567, BALANCE.resources.gold.unit), '1 234 567 золота');
   });
 });
 

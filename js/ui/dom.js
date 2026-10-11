@@ -2,6 +2,10 @@
 // dom.js — мелкие помощники для работы с DOM.
 // ============================================================================
 
+import { formatNumber } from '../game/content.js';
+
+export { formatNumber };
+
 /**
  * query с обязательным результатом: если элемента нет, это ошибка
  * разработчика, а не тихое поведение «ничего не работает».
@@ -21,12 +25,6 @@ export function h(tag, { class: className, text, title, attrs, style } = {}) {
   if (attrs) for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
   if (style) Object.assign(node.style, style);
   return node;
-}
-
-/** Краткое число: 1234 -> «1 234» */
-export function formatNumber(value) {
-  const rounded = Math.floor(value);
-  return rounded.toLocaleString('ru-RU').replace(/ /g, ' ');
 }
 
 /** Знак числа с плюсом для положительных значений. */

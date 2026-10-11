@@ -27,6 +27,7 @@ import {
 } from './economy.js';
 import { rollDailyEvent } from './events.js';
 import { Chronicle } from './chronicle.js';
+import { formatResource } from './content.js';
 
 export class Engine {
   constructor(state, rng, bus) {
@@ -224,7 +225,7 @@ export class Engine {
         note: {
           kind: 'trade',
           icon: '🗺️',
-          text: `Экспедиция удалась: +${amount} ${BALANCE.resources[reward.resource].name.toLowerCase()}`,
+          text: `Экспедиция удалась: +${formatResource(amount, BALANCE.resources[reward.resource].unit)}`,
         },
       };
     }

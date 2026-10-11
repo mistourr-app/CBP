@@ -47,6 +47,32 @@ describe('состав выбора', () => {
       assert.ok(choice.icon.length > 0, `нет иконки у ${choice.id}`);
     }
   });
+
+  it('подпись стоимости не содержит ошибок склонения', () => {
+    const { state, engine, rng } = freshDay();
+    setup(state, {
+      buildings: { houses: 8, farms: 3, lumberMills: 3, quarries: 3, markets: 2, temples: 3, schools: 1, walls: 1 },
+    });
+    state.setResource('gold', 100000);
+    state.setResource('wood', 100000);
+    state.setResource('stone', 100000);
+    state.setResource('food', 100000);
+    state.setResource('knowledge', 100000);
+    state.setResource('faith', 100000);
+    state.setResource('population', 80);
+
+    for (let day = 1; day <= BALANCE.choices.priority.length; day += 1) {
+      state.data.day = day;
+      for (const choice of generateChoices(engine, rng)) {
+        // Именительный падеж в подписи означает, что склонение не отработало
+        assert.doesNotMatch(
+          choice.costText,
+          /\b(древесина|еда|вера|знания|камень|золото)\b(?=,|$)/,
+          `${choice.id}: «${choice.costText}»`,
+        );
+      }
+    }
+  });
 });
 
 describe('доступность', () => {

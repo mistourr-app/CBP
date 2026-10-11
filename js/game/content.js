@@ -103,5 +103,18 @@ export function plural(count, one, few, many) {
   return many;
 }
 
+/**
+ * Количество ресурса прописью: formatResource(20, 'wood') -> «20 древесины».
+ * Без правильных форм интерфейс писал бы «20 древесина».
+ */
+export function formatResource(amount, unit) {
+  return `${formatNumber(amount)} ${plural(amount, unit.one, unit.few, unit.many)}`;
+}
+
+/** Целое число с пробелами между разрядами: 1234 -> «1 234». */
+export function formatNumber(value) {
+  return String(Math.floor(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
 export const CITIZEN_WORDS = ['житель', 'жителя', 'жителей'];
 export const DAY_WORDS = ['день', 'дня', 'дней'];
