@@ -7,8 +7,7 @@
 // engine.availableActions().
 //
 // Гарантии, которые проверяются тестами:
-//   * ровно BALANCE.choices.slots вариантов;
-//   * «Подождать» присутствует всегда;
+//   * не больше BALANCE.choices.slots вариантов, «Подождать» всегда есть;
 //   * нет недоступных по условиям разблокировки действий;
 //   * нет повторов.
 // ============================================================================
@@ -37,48 +36,59 @@ function buildWait() {
   };
 }
 
+/** Приводит действие к единой форме, которую ждёт интерфейс. */
+function normalize(action) {
+  return {
+    ...action,
+    cost: action.cost ?? {},
+    gain: action.gain ?? {},
+    affordable: action.affordable !== false,
+  };
+}
+
 /**
  * Собирает варианты на текущий ход.
+ *
+ * Налог — случайный вариант наравне с остальными: появляется с шансом
+ * BALANCE.choices.taxChance, занимает случайный слот и не требует ресурсов.
+ * «Подождать» всегда последний.
  *
  * @param {Engine} engine
  * @param {Rng}    rng
  * @returns {Array<{id,label,icon,requirements,workers,chance,effects,affordable,isWait}>}
  */
 export function generateChoices(engine, rng) {
-  const candidates = engine.availableActions()
-    .filter((action) => action.id !== 'wait')
-    .map((action) => ({
-      ...action,
-      cost: action.cost ?? {},
-      gain: action.gain ?? {},
-      affordable: action.affordable !== false,
-    }))
+  const available = engine.availableActions();
+  const tax = available.find((action) => action.id === 'tax');
+
+  const candidates = available
+    .filter((action) => action.id !== 'wait' && action.id !== 'tax')
+    .map(normalize)
     .sort((a, b) => priorityOf(a.id) - priorityOf(b.id));
 
-  // Сдвиг приоритета по номеру дня.
-  //
-  // В прототипе порядок был жёстко фиксирован, и в четыре слота попадали
-  // только первые четыре типа зданий: рынки, храмы, школы, стены, башни и
-  // все технологии становились недостижимы — их просто никогда не
-  // показывали. Сдвиг сохраняет взаимный порядок внутри списка, но за цикл
-  // показывает каждый вариант.
+  // Сдвиг приоритета по номеру дня: за цикл показывается каждый вариант.
+  // Без сдвига в слоты попадали бы только первые типы зданий.
   const shift = (engine.state.day - 1) % Math.max(1, priority.length);
   const rotated = rotate(candidates, shift);
 
-  // «Подождать» занимает последний слот всегда, а не только когда
-  // остальные варианты закончились: так его проще найти взглядом.
-  const capacity = slots - 1;
+  // Налог выпадает случайно: резервируем под него слот только в этот день
+  const taxOffered = Boolean(tax) && rng.chance(BALANCE.choices.taxChance);
+  const capacity = slots - 1 - (taxOffered ? 1 : 0);
 
   const picked = [];
   const seen = new Set();
 
-  // Выборы одного приоритета перемешиваются, чтобы последовательность
-  // не повторялась день за днём
   for (const choice of shuffleByPriority(rotated, rng)) {
     if (seen.has(choice.id)) continue;
     seen.add(choice.id);
     picked.push(choice);
     if (picked.length >= capacity) break;
+  }
+
+  // Налог ставим в случайную позицию среди обычных вариантов
+  if (taxOffered) {
+    const at = rng.int(0, picked.length);
+    picked.splice(at, 0, normalize(tax));
   }
 
   return [...picked, buildWait()];

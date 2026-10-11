@@ -676,6 +676,9 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   choices: {
     slots: 4,
+    // Шанс, что налог предложат в конкретный день. Налог — случайный вариант,
+    // не требует ресурсов; новая ставка при этом выпадает каждый день.
+    taxChance: 0.5,
     priority: [
       'build:houses', 'build:farms', 'build:lumberMills', 'build:quarries', 'build:well',
       'build:roads',
@@ -688,7 +691,6 @@ export const BALANCE = {
       'build:aqueduct', 'build:harbour', 'build:fireStation', 'build:wonder',
       'develop:advancedFarming', 'develop:lumberProcessing', 'develop:stoneMasonry',
       'develop:tradeRoutes', 'develop:education',
-      'tax',
       'trade', 'expedition', 'wait',
     ],
     actions: {
