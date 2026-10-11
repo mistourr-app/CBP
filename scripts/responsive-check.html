@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>responsive-check</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, monospace; background: #05070f; color: #dfe7ff; margin: 0; padding: 12px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+    figure { margin: 0; }
+    figcaption { color: #8fa; font-size: 11px; margin-bottom: 4px; }
+    iframe { border: 1px solid #334; background: #000; display: block; }
+    li { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<!-- Проверка вёрстки на узких экранах: ресурсы должны остаться в одну
+     строку и ничего не должно вылезать за пределы карточки. -->
+<div class="row" id="frames"></div>
+<ul id="out"></ul>
+
+<script type="module">
+const WIDTHS = [
+  { name: '320 — самый узкий', w: 320, h: 640 },
+  { name: '390 — iPhone', w: 390, h: 844 },
+  { name: '768 — планшет', w: 768, h: 1024 },
+];
+
+const results = [];
+let failed = false;
+
+function check(ok, label, detail = '') {
+  results.push(ok);
+  if (!ok) failed = true;
+  const item = document.createElement('li');
+  item.textContent = `${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ' — ' + detail : ''}`;
+  item.style.color = ok ? '#8ef0a8' : '#ff8f8f';
+  document.getElementById('out').append(item);
+}
+
+const host = document.getElementById('frames');
+
+for (const size of WIDTHS) {
+  const figure = document.createElement('figure');
+  const caption = document.createElement('figcaption');
+  caption.textContent = size.name;
+  const frame = document.createElement('iframe');
+  frame.width = size.w;
+  frame.height = size.h;
+  frame.style.width = `${size.w}px`;
+  frame.style.height = `${size.h}px`;
+  figure.append(caption, frame);
+  host.append(figure);
+
+  frame.src = '../index.html';
+
+  await new Promise((resolve) => {
+    frame.addEventListener('load', resolve, { once: true });
+    if (frame.contentDocument?.readyState === 'complete') resolve();
+  });
+  await new Promise((r) => setTimeout(r, 700));
+
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+
+  // Ресурсы в одну строку
+  const cards = [...doc.querySelectorAll('.res')];
+  const rows = new Set(cards.map((n) => Math.round(n.getBoundingClientRect().top))).size;
+  check(rows === 1, `${size.w}px: ресурсы в одну строку`, `строк: ${rows}`);
+
+  // Ничего не вылезает по горизонтали
+  const overflow = doc.documentElement.scrollWidth - doc.documentElement.clientWidth;
+  check(overflow <= 1, `${size.w}px: нет горизонтальной прокрутки`, `перелив ${overflow}px`);
+
+  // Карточки не сжимаются в ноль
+  const narrowest = Math.min(...cards.map((n) => n.getBoundingClientRect().width));
+  check(narrowest > 34, `${size.w}px: карточка не слишком узкая`, `${Math.round(narrowest)}px`);
+
+  // Значения ресурсов не обрезаны
+  const clipped = cards.filter((n) => {
+    const value = n.querySelector('.res__value');
+    return value.scrollWidth > value.clientWidth + 1;
+  });
+  check(clipped.length === 0, `${size.w}px: числа помещаются`, `обрезано: ${clipped.length}`);
+
+  // Кнопки выбора не обрезаны
+  const choiceClipped = [...doc.querySelectorAll('.choice:not([hidden])')]
+    .filter((n) => n.scrollHeight > n.clientHeight + 2);
+  check(choiceClipped.length === 0, `${size.w}px: подписи действий помещаются`,
+        `обрезано: ${choiceClipped.length}`);
+
+  // Хроника над выборами, выборы внизу
+  const order = [...doc.querySelectorAll('#ui-overlay > *')].map((n) => n.className.split(' ')[0]);
+  check(order.indexOf('chronicle-panel') < order.indexOf('choices-panel'),
+        `${size.w}px: хроника над выборами`, order.join(' → '));
+
+  // Секции не наезжают друг на друга
+  const choices = doc.querySelector('.choices-panel').getBoundingClientRect();
+  const chronicle = doc.querySelector('.chronicle-panel').getBoundingClientRect();
+  check(chronicle.bottom <= choices.top + 1, `${size.w}px: хроника не наезжает на выборы`);
+
+  // Выборы прижаты к низу и ничего не обрезано
+  const viewport = win.innerHeight;
+  const slack = viewport - choices.bottom;
+  check(Math.abs(slack) < 24, `${size.w}px: выборы прижаты к низу`, `${Math.round(slack)}px`);
+
+  const overflowY = doc.documentElement.scrollHeight - doc.documentElement.clientHeight;
+  check(overflowY <= 1, `${size.w}px: всё помещается по высоте`, `перелив ${overflowY}px`);
+}
+
+document.title = failed ? 'FAILED' : `PASS ${results.length}`;
+</script>
+</body>
+</html>

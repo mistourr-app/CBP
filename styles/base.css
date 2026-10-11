@@ -51,11 +51,11 @@ body.no-webgl #bg-canvas {
   position: fixed;
   inset: 0;
   z-index: 1;
-  display: grid;
-  /* Пять секций: шапка, показатели, ресурсы, хроника, выборы.
-     Растягивается только хроника — у неё своя прокрутка, остальным
-     высота по содержимому. */
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  /* Вертикальный список: шапка, показатели, ресурсы, хроника, выборы.
+     Выборы прижаты к нижнему краю через margin-top: auto в choices-panel,
+     поэтому между ними и хроникой остаётся свободное место. */
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-3);
   padding:
     calc(var(--sp-3) + var(--safe-top))

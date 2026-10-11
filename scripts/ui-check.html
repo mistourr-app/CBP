@@ -54,6 +54,32 @@ try {
   check(unique.length === 1, 'высота карточек одинакова',
         `высоты: ${unique.join(', ')} | ${boxes.map((b) => `${b.cls}=${b.h}`).join(', ')}`);
 
+  // -- Ресурсы в одну строку ----------------------------------------------
+  const cards2 = [...doc.querySelectorAll('.res')];
+  check(cards2.length === 6, 'ресурсов шесть', String(cards2.length));
+
+  const tops = [...new Set(cards2.map((n) => Math.round(n.getBoundingClientRect().top)))];
+  check(tops.length === 1, 'ресурсы в одну строку', `строк: ${tops.length}`);
+
+  const widest = Math.max(...cards2.map((n) => n.getBoundingClientRect().right));
+  const box = doc.querySelector('.resources').getBoundingClientRect();
+  check(widest <= box.right + 1, 'ресурсы не вылезают за полосу',
+        `${Math.round(widest)} / ${Math.round(box.right)}`);
+  check(box.height < 90, 'полоса ресурсов низкая', `${Math.round(box.height)}px`);
+
+  // -- Порядок секций ----------------------------------------------------
+  const order = [...doc.querySelectorAll('#ui-overlay > *')].map((n) => n.className.split(' ')[0]);
+  check(order.indexOf('chronicle-panel') < order.indexOf('choices-panel'),
+        'хроника над выборами', order.join(' → '));
+  check(order.at(-1) === 'choices-panel', 'выборы в самом низу', order.join(' → '));
+
+  const chronicleBox = doc.querySelector('.chronicle-panel').getBoundingClientRect();
+  const choicesBox = doc.querySelector('.choices-panel').getBoundingClientRect();
+  const viewportH = frame.contentWindow.innerHeight;
+  check(chronicleBox.bottom <= choicesBox.top + 1, 'хроника не залезает на выборы');
+  check(Math.abs(choicesBox.bottom - viewportH) < 24, 'выборы прижаты к низу экрана',
+        `${Math.round(viewportH - choicesBox.bottom)}px снизу`);
+
   // -- Порядок действий ---------------------------------------------------
   const buttons = [...doc.querySelectorAll('.choice')].filter((n) => !n.hidden);
   const labels = buttons.map((n) => n.querySelector('.choice__text').textContent);
@@ -93,6 +119,13 @@ try {
   check(openCount > collapsedCount, 'появились более ранние записи', `${collapsedCount} → ${openCount}`);
   const openHeight = Math.round(panel.getBoundingClientRect().height);
   check(openHeight > collapsedHeight, 'панель выросла', `${collapsedHeight} → ${openHeight}`);
+
+  // Даже развёрнутая хроника не должна вытеснить выборы за экран
+  const expandedChoices = doc.querySelector('.choices-panel').getBoundingClientRect();
+  const expandedViewport = frame.contentWindow.innerHeight;
+  check(expandedChoices.bottom <= expandedViewport + 1,
+        'выборы остались на экране при раскрытой хронике',
+        `${Math.round(expandedChoices.bottom)} / ${expandedViewport}`);
 
   toggle.click();
   await new Promise((r) => setTimeout(r, 250));

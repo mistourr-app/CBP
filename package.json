@@ -14,7 +14,8 @@
     "test": "node --test",
     "check:boot": "node scripts/check-boot.js",
     "check:ui": "node scripts/check-ui.js",
-    "check": "npm run test && npm run check:boot && npm run check:ui"
+    "check:responsive": "node scripts/check-responsive.js",
+    "check": "npm run test && npm run check:boot && npm run check:ui && npm run check:responsive"
   },
   "engines": {
     "node": ">=18"

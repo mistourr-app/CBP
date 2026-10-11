@@ -159,22 +159,26 @@
 
 /* --- Ресурсы ------------------------------------------------------------ */
 
+/* Ресурсы всегда в одну строку: шесть карточек на всю ширину.
+   На телефоне это ~57 пикселей на карточку, поэтому содержимое
+   укладывается вертикально, а название остаётся в подсказке. */
 .resources {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--sp-2);
 }
 
 .res {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  justify-content: center;
+  gap: 1px;
+  padding: var(--sp-2) var(--sp-1);
+  text-align: center;
   background: var(--c-panel);
   border: 1px solid var(--c-panel-border);
-  border-left: 3px solid var(--res-color, var(--c-bg-accent));
+  border-top: 3px solid var(--res-color, var(--c-bg-accent));
   border-radius: var(--r-md);
   backdrop-filter: blur(var(--blur));
   -webkit-backdrop-filter: blur(var(--blur));
@@ -182,12 +186,12 @@
 
 .res__icon {
   font-size: var(--fs-md);
-  line-height: 1;
-  flex: none;
+  line-height: 1.1;
 }
 
 .res__body {
   min-width: 0;
+  max-width: 100%;
 }
 
 .res__value {
@@ -197,22 +201,28 @@
   font-size: var(--fs-sm);
   font-weight: 700;
   line-height: 1.15;
+  white-space: nowrap;
 }
 
+/* Название не помещается в узкую карточку: остаётся подсказкой */
 .res__name {
-  display: block;
+  display: none;
   font-size: var(--fs-2xs);
-  line-height: 1.2;
+  line-height: 1.15;
   color: var(--c-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .res__delta {
+  display: block;
   font-family: var(--font-num);
   font-size: var(--fs-2xs);
   font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .res__delta--up   { color: var(--c-positive); }
@@ -227,11 +237,11 @@
 .chronicle-panel {
   display: flex;
   flex-direction: column;
-  /* Свёрнутая панель занимает ровно своё содержимое, развёрнутая —
-     тянется до свободного места и прокручивается внутри */
-  align-self: start;
-  max-height: 100%;
+  /* Хроника стоит прямо над выборами и занимает ровно своё содержимое.
+     Развёрнутая — растёт, но не вытесняет выборы за край экрана. */
+  flex: 0 1 auto;
   min-height: 0;
+  max-height: 45vh;
   padding: var(--sp-3) var(--sp-4);
   background: var(--c-panel);
   border: 1px solid var(--c-panel-border);
@@ -344,6 +354,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  /* Прижимает выборы к нижнему краю экрана */
+  margin-top: auto;
+  flex: none;
   padding: var(--sp-3) var(--sp-4) var(--sp-4);
   background: var(--c-panel);
   border: 1px solid var(--c-panel-border);
@@ -550,8 +563,14 @@
   .choices { grid-template-columns: 1fr; }
   .city__title { font-size: var(--fs-md); }
   .meter__label { font-size: 0.625rem; }
-  .res { padding: var(--sp-1) var(--sp-2); }
-  .res__name { font-size: 0.625rem; }
+  .res { padding: var(--sp-1) 2px; }
+  .res__value { font-size: var(--fs-xs); }
+  .res__delta { font-size: 0.5625rem; }
+}
+
+/* На широком экране карточки ресурсов просторнее — возвращаем названия */
+@media (min-width: 620px) {
+  .res__name { display: block; }
 }
 
 @media (min-width: 900px) {
@@ -562,5 +581,4 @@
 @media (max-height: 560px) {
   .chronicle-panel { padding: var(--sp-2) var(--sp-3); }
   .choice { min-height: 46px; }
-  .res__name { display: none; }
 }
