@@ -64,9 +64,9 @@ export class ChoicesPanel {
 
       button.hidden = false;
       button.disabled = this.locked || !choice.affordable;
-      button.classList.toggle('choice--wait', Boolean(choice.isWait));
-      // Не хватает ресурсов: фон всей кнопки краснеет (цифры читаются поверх)
-      button.classList.toggle('choice--short', !choice.affordable && !choice.isWait);
+      // Не хватает ресурсов: фон всей кнопки краснеет (цифры читаются поверх).
+      // «Подождать» оформляется как все выборы, поэтому не исключается.
+      button.classList.toggle('choice--short', !choice.affordable);
 
       // textContent, а не innerHTML: подписи приходят из данных игры
       icon.textContent = choice.icon;
@@ -76,16 +76,12 @@ export class ChoicesPanel {
   }
 
   /**
-   * Строка под названием: эффекты (если есть) либо требования иконками.
-   * Эффекты и требования не смешиваются в одной кнопке.
+   * Строка под названием: сначала эффекты (стрелками, зачем здание нужно),
+   * затем требования (расход) и рабочие. Налог показывает только эффекты.
    */
   #metaNodes(choice) {
-    if (choice.effects?.length) {
-      return choice.effects.map((effect) => deltaChip(effect));
-    }
-
     // Цвет по смыслу: расход — красным, приход — зелёным, остальное нейтрально
-    const nodes = [];
+    const nodes = (choice.effects ?? []).map((effect) => deltaChip(effect));
 
     for (const { resource, amount } of choice.requirements ?? []) {
       const def = BALANCE.resources[resource];

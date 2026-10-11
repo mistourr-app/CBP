@@ -523,11 +523,7 @@
 /* Не хватает этого ресурса: только эта цифра красная и жирная */
 .fig--missing { color: var(--c-negative); font-weight: 700; }
 
-/* «Подождать» занимает обычный слот, как и остальные действия */
-.choice--wait {
-  background: linear-gradient(135deg, rgba(16, 23, 51, 0.85), rgba(12, 18, 42, 0.7));
-  border-color: var(--c-panel-border);
-}
+/* «Подождать» — обычный выбор; особого оформления нет */
 
 /* --- Иконочная кнопка --------------------------------------------------- */
 
@@ -672,8 +668,9 @@
   white-space: nowrap;
 }
 .delta__arrow { font-size: 0.6rem; }
-.delta--up .delta__arrow, .delta--up .delta__value { color: var(--c-positive); }
-.delta--down .delta__arrow, .delta--down .delta__value { color: var(--c-negative); }
+/* Цвет — выгода/невыгода для игрока, стрелка — направление величины */
+.delta--good .delta__arrow, .delta--good .delta__value { color: var(--c-positive); }
+.delta--bad .delta__arrow, .delta--bad .delta__value { color: var(--c-negative); }
 .delta--flat .delta__arrow, .delta--flat .delta__value { color: var(--c-text-faint); }
 
 /* --- Попап по центру экрана ---------------------------------------------- */

@@ -44,6 +44,60 @@ function buildingIcon(def) {
   return def.icon;
 }
 
+/**
+ * Как показывать эффекты зданий и технологий в выборе.
+ *   key      — ключ эффекта в balance (effects.*)
+ *   icon     — иконка показателя (для пищи подставляется текущая)
+ *   unit     — подпись единицы
+ *   negate   — эффект уменьшает потери (больше жертв меньше), поэтому стрелка вниз
+ *   good     — всегда выгодно для игрока (его цвет зелёный)
+ */
+const EFFECT_VIEW = {
+  happiness:              { icon: '😊', unit: '' },
+  goldPerCitizen:         { icon: '💰', unit: 'за жителя' },
+  goldPerDay:             { icon: '💰', unit: 'в день' },
+  foodPerDay:             { food: true, unit: 'в день' },
+  guardDefense:           { icon: '🛡️', unit: 'защита' },
+  suppressionGuard:       { icon: '👮', unit: 'против бунта' },
+  fireDays:               { icon: '🔥', unit: 'дн. пожара', good: true },
+  epidemicLossReduction:  { icon: '🤒', unit: 'меньше жертв', negate: true, good: true },
+  negativeDaysReduction:  { icon: '⏱️', unit: 'дн. бедствий', negate: true, good: true },
+  productionPerProducer:  { icon: '⚙️', unit: 'к выработке' },
+};
+
+/** Эффекты здания (социального или дорожного) в виде строк для выбора. */
+function buildingEffects(def, state) {
+  return Object.entries(def.effects ?? {})
+    .filter(([, amount]) => amount)
+    .map(([key, amount]) => effectChip(key, amount, state));
+}
+
+/** Эффект технологии: бонус к выработке или к эффекту здания. */
+function techEffects(def, state) {
+  const out = [];
+  if (def.productionBonus) {
+    const { resource, amount } = def.productionBonus;
+    out.push({ icon: BALANCE.resources[resource].icon, delta: amount, unit: 'за здание', good: true });
+  }
+  if (def.effectBonus) {
+    const { effect, amount } = def.effectBonus;
+    out.push(effectChip(effect, amount, state, 'за здание'));
+  }
+  return out;
+}
+
+function effectChip(key, amount, state, unitOverride) {
+  const view = EFFECT_VIEW[key] ?? { icon: '•', unit: '' };
+  const icon = view.food ? BALANCE.resources[currentFoodKey(state)].icon : view.icon;
+  const delta = view.negate ? -amount : amount;
+  return {
+    icon,
+    delta,
+    unit: unitOverride ?? view.unit,
+    good: view.good,
+  };
+}
+
 /** Стоимость как список требований для интерфейса. */
 function toRequirements(cost = {}) {
   return Object.entries(cost)
@@ -102,6 +156,7 @@ export class Engine {
         icon: buildingIcon(def),
         cost,
         requirements: toRequirements(cost),
+        effects: buildingEffects(def, state),
         workers: def.workers ?? 0,
         affordable: canAfford(state, cost),
       });
@@ -121,6 +176,7 @@ export class Engine {
         icon: def.icon,
         cost: def.cost,
         requirements: toRequirements(def.cost),
+        effects: techEffects(def, state),
         workers: 0,
         affordable: true,
       });
