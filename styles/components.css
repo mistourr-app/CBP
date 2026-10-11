@@ -444,7 +444,8 @@
   color: var(--c-text);
   text-align: left;
   background: linear-gradient(135deg, rgba(22, 33, 62, 0.9), rgba(15, 52, 96, 0.75));
-  border: 1px solid var(--c-accent-line);
+  /* Нейтральная рамка: красная здесь путала с нехваткой ресурсов */
+  border: 1px solid var(--c-panel-border);
   border-radius: var(--r-sm);
   cursor: pointer;
   touch-action: manipulation;
@@ -458,7 +459,7 @@
 .choice:hover:not(:disabled) {
   transform: translateY(-1px);
   background: linear-gradient(135deg, var(--c-accent-soft), rgba(15, 52, 96, 0.85));
-  border-color: var(--c-accent);
+  border-color: var(--c-text-muted);
 }
 
 .choice:active:not(:disabled) {
@@ -478,7 +479,7 @@
   opacity: 1;
   cursor: not-allowed;
   background: linear-gradient(135deg, rgba(44, 8, 18, 0.97), rgba(30, 6, 14, 0.95));
-  border-color: transparent;
+  border-color: var(--c-panel-border);
 }
 
 .choice__key {
