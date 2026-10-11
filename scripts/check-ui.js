@@ -46,6 +46,19 @@ const args = [
   '--disable-gpu',
   '--no-sandbox',
   '--disable-dev-shm-usage',
+  // Без внешней сети: браузер не обращается к серверам Microsoft/Google.
+  // Страницы грузятся только с 127.0.0.1, любой другой домен не резолвится.
+  '--disable-background-networking',
+  '--disable-component-update',
+  '--disable-client-side-phishing-detection',
+  '--disable-domain-reliability',
+  '--disable-sync',
+  '--disable-default-apps',
+  '--disable-breakpad',
+  '--metrics-recording-only',
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
   // Нужна ширина: карточки перестраиваются по брейкпоинтам
   '--window-size=1280,1024',
   '--virtual-time-budget=25000',
