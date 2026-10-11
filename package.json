@@ -1,0 +1,14 @@
+{
+  "name": "cbp",
+  "version": "0.2.0",
+  "description": "City Builder — choice-driven text-based city builder PWA",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node serve.js",
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
