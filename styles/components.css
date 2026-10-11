@@ -471,18 +471,15 @@
   cursor: not-allowed;
 }
 
-/* Не хватает ресурсов: тёмно-красный фон, непрозрачный, чтобы цифры читались.
-   Сама кнопка отключена (нельзя нажать), но не выцветает. */
+/* Не хватает ресурсов: фон потемнее и без рамки. Кнопка отключена,
+   но не выцветает. Расход остаётся белым, красным подсвечивается только
+   то, чего не хватает (см. .fig--missing). */
 .choice--short:disabled {
   opacity: 1;
   cursor: not-allowed;
-  background: linear-gradient(135deg, rgba(74, 18, 32, 0.96), rgba(52, 14, 26, 0.92));
-  border-color: var(--c-danger);
+  background: linear-gradient(135deg, rgba(44, 8, 18, 0.97), rgba(30, 6, 14, 0.95));
+  border-color: transparent;
 }
-.choice--short:disabled .choice__text { color: var(--c-text); }
-/* На красном фоне красные цифры сливаются — нехватку пишем светлым и жирным */
-.choice--short:disabled .fig { color: var(--c-text); font-weight: 700; }
-.choice--short:disabled .fig--missing { text-decoration: none; }
 
 .choice__key {
   position: absolute;
@@ -519,10 +516,11 @@
 
 /* Нехватка ресурса в требованиях подсвечивается */
 .fig { white-space: nowrap; }
-.fig--cost { color: var(--c-negative); }
+.fig--cost { color: var(--c-text); }
 .fig--gain { color: var(--c-positive); }
 .fig--neutral { color: var(--c-text-muted); }
-.fig--missing { font-weight: 700; text-decoration: underline; }
+/* Не хватает этого ресурса: только эта цифра красная и жирная */
+.fig--missing { color: var(--c-negative); font-weight: 700; }
 
 /* «Подождать» занимает обычный слот, как и остальные действия */
 .choice--wait {
