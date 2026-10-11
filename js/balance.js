@@ -169,24 +169,29 @@ export const BALANCE = {
         id: 'settlement', name: 'Поселение', icon: '🛖',
         nextName: 'Деревня', nextIcon: '🏠',
         upgradeText: 'Поздравляем, поселение стало деревней!',
+        // Стартовый запас пищевого ресурса следующего тира (ПРЕДВАРИТЕЛЬНО, подбирается по симуляции)
+        starterFood: 60,
         requirements: { wood: 100, stone: 100, food: 100 },
       },
       {
         id: 'village', name: 'Деревня', icon: '🏠',
         nextName: 'Городок', nextIcon: '🏘️',
         upgradeText: 'Поздравляем, деревня стала городком!',
+        starterFood: 60,
         requirements: { boards: 200, brick: 200, flour: 200, clothes: 200 },
       },
       {
         id: 'town', name: 'Городок', icon: '🏘️',
         nextName: 'Город', nextIcon: '🏙️',
         upgradeText: 'Поздравляем, городок стал городом!',
+        starterFood: 60,
         requirements: { metal: 300, coal: 300, tools: 300, books: 300, meat: 300 },
       },
       {
         id: 'city', name: 'Город', icon: '🏙️',
         nextName: 'Большой город', nextIcon: '🏛️',
         upgradeText: 'Поздравляем, город стал большим городом!',
+        starterFood: 60,
         requirements: { machines: 400, jewelry: 400, wine: 400, delicacies: 400, press: 400 },
       },
       {

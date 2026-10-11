@@ -313,7 +313,15 @@ export class Engine {
     if (!current?.requirements) return;
     if (!canAfford(state, current.requirements)) return;
 
+    const previous = state.tierDef;
     state.data.tier += 1;
+
+    // Стартовый запас пищевого ресурса нового тира: без него житель съел бы
+    // пустоту уже на следующий день, а мельница даёт продукцию только после
+    // потребления. Запас задан в балансе (development.levels[].starterFood).
+    const starter = previous.starterFood ?? 0;
+    if (starter > 0) state.addResource(currentFoodKey(state), starter);
+
     state.normalize();
 
     const next = state.tierDef;
@@ -490,16 +498,17 @@ export class Engine {
     const eventNote = rollDailyEvent(state, this.rng);
     if (eventNote) this.chronicle.add(state, eventNote);
 
-    // Переход на тир — в конце дня, если накоплены все требования
-    this.#checkTierUp();
-
     // События меняют показатели напрямую, поэтому приводим их к
     // согласованному виду перед проверкой окончания партии
     state.normalize();
 
-    // 9. Условия окончания
+    // 9. Условия окончания. Проверяются ДО перехода на тир: переход не может
+    // сам по себе привести к поражению (пищевой ресурс нового тира ещё пуст).
     state.stats.daysSurvived = state.day;
     this.#checkEndConditions();
+
+    // Переход на тир — в конце дня, если накоплены все требования
+    if (!state.isOver) this.#checkTierUp();
 
     this.rollOffers();
 
