@@ -126,7 +126,9 @@ export function computeProduction(state) {
   const season = BALANCE.seasons[state.seasonIndex];
   const roads = state.buildingCount('roads');
   const roadBonus = roads * (BALANCE.buildings.roads.effects.productionPerProducer ?? 0);
-  const moodBonus = Math.max(0, state.happinessLevel);
+  // Счастье прибавляет (или отнимает) по N ед. к выработке каждого работающего
+  // здания: −2 → −2, −1 → −1, 0 → нет, +1 → +1, +2 → +2.
+  const moodBonus = state.happinessLevel;
 
   for (const buildingKey of WORKFORCE_BUILDINGS) {
     const def = BALANCE.buildings[buildingKey];

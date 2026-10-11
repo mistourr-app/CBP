@@ -108,15 +108,31 @@ describe('производство', () => {
     assert.equal(joyful - neutral, 2 * 2);
   });
 
-  it('отрицательное счастье не уменьшает выработку', () => {
+  it('счастье меняет выработку на N ед. на здание при любом уровне, включая отрицательный', () => {
     const { state } = makeSession();
-    setup(state, { buildings: { farms: 2 }, workers: { farms: 4 } });
+    // Два рабочих на ферме, одна ферма: база выработки 2 × 5 = 10 еды, без сезона
+    setup(state, { buildings: { farms: 1 }, workers: { farms: 2 } });
+    state.data.seasonIndex = 0; // весна: поправка к еде 0
 
-    state.setHappiness(0);
-    const neutral = computeProduction(state).food;
+    const at = (level) => {
+      state.setHappiness(level);
+      return computeProduction(state).food;
+    };
+    const neutral = at(0);
+
+    assert.equal(at(-2), neutral - 2, 'при −2 минус 2 на здание');
+    assert.equal(at(-1), neutral - 1, 'при −1 минус 1 на здание');
+    assert.equal(at(1), neutral + 1, 'при +1 плюс 1 на здание');
+    assert.equal(at(2), neutral + 2, 'при +2 плюс 2 на здание');
+  });
+
+  it('выработка не уходит ниже нуля даже при глубоком недовольстве', () => {
+    const { state } = makeSession();
+    setup(state, { buildings: { farms: 1 }, workers: { farms: 1 } });
+    state.data.seasonIndex = 2; // осень: поправка 0
     state.setHappiness(-2);
 
-    assert.equal(computeProduction(state).food, neutral);
+    assert.ok(computeProduction(state).food >= 0);
   });
 });
 
