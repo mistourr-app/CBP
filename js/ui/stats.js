@@ -29,6 +29,17 @@ const LOW_THRESHOLDS = {
 
 // Уровень счастья — дискретный, от -2 до +2, поэтому и предупреждение
 // задаётся уровнем, а не процентом.
+/** Подсказка к счастью: из-за чего оно сейчас такое. */
+function moodTooltip(state) {
+  const names = BALANCE.happiness.moods.names;
+  if (!state.data.moods.length) return 'Настроение: только налог и здания';
+  const lines = state.data.moods.map((m) => {
+    const sign = m.delta > 0 ? '+' : '';
+    return `${sign}${m.delta} ${names[m.tag] ?? m.tag}, ещё ${m.daysLeft} дн.`;
+  });
+  return `Настроение:\n${lines.join('\n')}`;
+}
+
 const MOOD_WARN = -1;
 const MOOD_DANGER = -2;
 
@@ -176,6 +187,7 @@ export class StatsPanel {
     const happiness = this.meterNodes.get('happiness');
     happiness.icon.textContent = mood.icon;
     happiness.value.textContent = mood.label;
+    happiness.node.title = moodTooltip(state);
 
     happiness.node.classList.toggle('meter--ok', level > MOOD_WARN);
     happiness.node.classList.toggle('meter--warn', level === MOOD_WARN);

@@ -47,6 +47,15 @@ function clampHappiness(level) {
  * События вроде осады вычитали жителей без нижней границы, из-за чего
  * население уходило в минус.
  */
+/** Оставляет только корректные модификаторы: тег, число и срок в днях. */
+function sanitizeMoods(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((m) => m && typeof m.tag === 'string' && Number.isFinite(m.delta) && Number.isFinite(m.daysLeft))
+    .map((m) => ({ tag: m.tag, delta: Math.round(m.delta), daysLeft: Math.floor(m.daysLeft) }))
+    .filter((m) => m.daysLeft > 0 && m.delta !== 0);
+}
+
 function normalizeState(data) {
   const r = data.resources;
 
@@ -59,6 +68,9 @@ function normalizeState(data) {
   }
 
   data.tier = clamp(Math.floor(data.tier ?? TIER_MIN), TIER_MIN, TIER_MAX);
+  data.moods = sanitizeMoods(data.moods);
+  data.lowMoodDays = Math.max(0, Math.floor(data.lowMoodDays ?? 0));
+  data.pending = data.pending && typeof data.pending.id === 'string' ? data.pending : null;
 
   // Рабочие стоят только на действующих зданиях: прошлые уровни освобождаются
   for (const key of WORKFORCE_BUILDINGS) {
@@ -116,6 +128,15 @@ export function createInitialState() {
 
     /** Попап, который ждёт закрытия (переход на тир и т.п.). Выборы заблокированы. */
     popup: null,
+
+    /** Активные модификаторы счастья: [{tag, delta, daysLeft}]. Живут между днями. */
+    moods: [],
+
+    /** Сколько дней подряд счастье на −2 (для проверки бунта). */
+    lowMoodDays: 0,
+
+    /** Событие с выбором, которое ждёт ответа: {id} либо null. */
+    pending: null,
 
     status: 'running', // running | won | lost
     endReason: '',
@@ -260,6 +281,9 @@ export class GameState {
     state.tier = Number.isInteger(raw.tier) ? raw.tier : state.tier;
     state.offers = { ...state.offers, ...(raw.offers ?? {}) };
     state.popup = raw.popup && typeof raw.popup === 'object' ? raw.popup : null;
+    state.moods = raw.moods;
+    state.lowMoodDays = raw.lowMoodDays;
+    state.pending = raw.pending;
     state.happiness = Number.isFinite(raw.happiness) ? raw.happiness : state.happiness;
     state.taxRateIndex = Number.isFinite(raw.taxRateIndex)
       ? raw.taxRateIndex
@@ -268,6 +292,40 @@ export class GameState {
     // Нормализация живёт на экземпляре, поэтому применяем её уже после
     // создания: на этапе восстановления ещё нет метода normalize
     return new GameState(normalizeState(state));
+  }
+
+  // -- модификаторы счастья --------------------------------------------------
+
+  /** Сумма модификаторов, которая прибавляется к базе счастья. */
+  moodSum() {
+    return this.data.moods.reduce((sum, m) => sum + m.delta, 0);
+  }
+
+  /** Добавляет модификатор на days дней. */
+  addMood({ tag, delta, days }) {
+    if (!delta || days <= 0) return;
+    this.data.moods.push({ tag, delta, daysLeft: days });
+  }
+
+  /** Сумма только ожиданий: нужна, чтобы не превысить waitCap. */
+  waitTotal() {
+    return this.data.moods
+      .filter((m) => m.tag === BALANCE.happiness.moods.waitTag)
+      .reduce((sum, m) => sum + m.delta, 0);
+  }
+
+  /** Конец дня для модификаторов: срок уменьшается, истёкшие удаляются. */
+  tickMoods() {
+    this.data.moods = this.data.moods
+      .map((m) => ({ ...m, daysLeft: m.daysLeft - 1 }))
+      .filter((m) => m.daysLeft > 0);
+  }
+
+  /** Постройка снимает модификаторы перечисленных тегов. Возвращает число снятых. */
+  cureMoods(tags = []) {
+    const before = this.data.moods.length;
+    this.data.moods = this.data.moods.filter((m) => !tags.includes(m.tag));
+    return before - this.data.moods.length;
   }
 
   reset() {

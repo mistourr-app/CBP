@@ -99,6 +99,11 @@ function drawWeighted(pool, count, rng) {
  * @returns {Array<{id,label,icon,requirements,workers,chance,effects,affordable,isWait}>}
  */
 export function generateChoices(engine, rng) {
+  // Открыто событие с выбором: показываем только его варианты, обычные заблокированы
+  if (engine.state.data.pending) {
+    return engine.pendingChoices().map(normalize);
+  }
+
   const available = engine.availableActions();
   const tax = available.find((action) => action.group === 'tax');
 

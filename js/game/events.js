@@ -17,7 +17,7 @@ export function eventChance(state) {
     chanceBase +
     state.population / chancePerTwoPopulation +
     state.day / chancePerFiftyDays;
-  return Math.min(1, percent / 100);
+  return Math.min(BALANCE.events.maxChance, percent) / 100;
 }
 
 /** Список событий, доступных при текущем состоянии. */
@@ -66,6 +66,12 @@ export function rollDailyEvent(state, rng) {
   return trigger(state, id, rng);
 }
 
+/** Мгновенное событие меняет счастье модификатором на eventDays дней, а не сдвигом. */
+function addEventMood(state, tag, delta) {
+  if (!delta) return;
+  state.addMood({ tag, delta, days: BALANCE.happiness.moods.eventDays });
+}
+
 function loss(state, amount, floor = true) {
   return floor ? Math.floor(amount) : amount;
 }
@@ -110,7 +116,7 @@ export function trigger(state, id, rng) {
 
         state.addResource('gold', -goldLost);
         state.addResource('population', -peopleLost);
-        state.setHappiness(state.happiness - def.happinessLoss);
+        addEventMood(state, def.moodTag ?? 'event', -def.happinessLoss);
         state.stats.citizensLost += peopleLost;
 
         note.text = `Нападение бандитов! Потери: -${goldLost} золота, -${peopleLost} жителей`;
@@ -129,7 +135,7 @@ export function trigger(state, id, rng) {
       deaths = Math.max(0, deaths - socialEffect(state, 'epidemicLossReduction'));
       deaths = Math.min(deaths, state.population);
       state.addResource('population', -deaths);
-      state.setHappiness(state.happiness - def.happinessLoss);
+      addEventMood(state, def.moodTag ?? 'event', -def.happinessLoss);
       state.stats.citizensLost += deaths;
 
       note.text = `Эпидемия! Погибло ${deaths} жителей`;
@@ -150,14 +156,14 @@ export function trigger(state, id, rng) {
 
       state.addResource(foodKey, -foodLost);
       state.addResource('wood', -woodLost);
-      state.setHappiness(state.happiness - def.happinessLoss);
+      addEventMood(state, def.moodTag ?? 'event', -def.happinessLoss);
 
       note.text = `Метель! Потери: -${foodLost} еды, -${woodLost} древесины`;
       break;
     }
 
     case 'famine_warning': {
-      state.setHappiness(state.happiness - def.happinessLoss);
+      addEventMood(state, def.moodTag ?? 'event', -def.happinessLoss);
       note.text = 'Запасы еды на исходе!';
       break;
     }
@@ -171,7 +177,7 @@ export function trigger(state, id, rng) {
         state.population * def.suppressionPerPopulationHalf;
 
       if (suppression > rebellion) {
-        state.setHappiness(state.happiness + def.happinessGainOnSuccess);
+        addEventMood(state, 'riot', def.happinessGainOnSuccess);
         note.text = 'Волнения в городе подавлены';
       } else {
         const deaths = Math.min(

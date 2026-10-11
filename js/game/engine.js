@@ -110,6 +110,24 @@ function percentOf(index) {
   return Math.round(BALANCE.taxes[index].rate * 100);
 }
 
+/** Ключи вида '$food' заменяются пищевым ресурсом текущего тира. */
+function resolveKeys(map = {}, state) {
+  const out = {};
+  for (const [key, amount] of Object.entries(map)) {
+    const real = key === '$food' ? currentFoodKey(state) : key;
+    out[real] = (out[real] ?? 0) + amount;
+  }
+  return out;
+}
+
+/** Событие подходит к текущему состоянию партии. */
+function eventAvailable(def, state) {
+  if (def.minTier && state.tier < def.minTier) return false;
+  if (def.minPopulation && state.population < def.minPopulation) return false;
+  if (def.requiresBuildings?.some((key) => state.buildingCount(key) <= 0)) return false;
+  return true;
+}
+
 export class Engine {
   constructor(state, rng, bus) {
     this.state = state;
@@ -280,9 +298,12 @@ export class Engine {
     // Пока открыт попап (например, переход на тир), выборы заблокированы
     if (this.state.data.popup) return { ok: false, note: null };
 
+    // Пока ждём ответа на событие, обычные действия недоступны
+    if (this.state.data.pending && !actionId.startsWith('event:')) return { ok: false, note: null };
+
     switch (actionId) {
       case 'wait':
-        return { ok: true, note: null };
+        return this.#wait();
       case 'trade':
         return this.#trade();
       case 'expedition':
@@ -293,6 +314,7 @@ export class Engine {
 
     const [kind, key] = actionId.split(':');
     if (kind === 'tax') return this.#changeTax(Number(key));
+    if (kind === 'event') return this.#resolveEvent(Number(key));
     if (kind === 'build') return this.#build(key);
     if (kind === 'develop') return this.#develop(key);
 
@@ -338,6 +360,9 @@ export class Engine {
     this.state.addBuilding(key, 1);
     this.state.stats.buildingsBuilt += 1;
 
+    // Постройка снимает модификаторы своих тегов (например, таверна — ожидание)
+    const cured = this.state.cureMoods(def.cures ?? []);
+
     // Дом вселяет жителя сразу: застройка и есть способ увеличить население
     let residents = 0;
     if (def.onBuild?.residents) {
@@ -349,10 +374,11 @@ export class Engine {
     this.state.clampHappiness();
 
     const extra = residents ? ` (+${residents} житель)` : '';
+    const healed = cured > 0 ? ' · настроение исправлено' : '';
 
     return {
       ok: true,
-      note: { kind: 'build', icon: def.icon, text: `Построено: ${def.name}${extra}` },
+      note: { kind: 'build', icon: def.icon, text: `Построено: ${def.name}${extra}${healed}` },
     };
   }
 
@@ -392,6 +418,119 @@ export class Engine {
       icon: next.icon,
       text: `Поселение перешло на новый уровень: ${next.name}`,
     });
+  }
+
+  /**
+   * «Подождать»: ход без расходов. Даёт модификатор счастья на несколько дней.
+   * Сумма ожиданий ограничена waitCap, чтобы не было мгновенного бунта.
+   */
+  #wait() {
+    const { waitTag, waitDelta, waitDays, waitCap } = BALANCE.happiness.moods;
+    if (this.state.waitTotal() + waitDelta < waitCap) {
+      return { ok: true, note: null };
+    }
+    this.state.addMood({ tag: waitTag, delta: waitDelta, days: waitDays });
+    return {
+      ok: true,
+      note: { kind: 'social', icon: '⏳', text: 'Город ждёт: настроение падает' },
+    };
+  }
+
+  /** Событие с выбором выпало: показываем попап, варианты придут после его закрытия. */
+  #rollChoiceEvent() {
+    const state = this.state;
+    const config = BALANCE.events.choice;
+    if (!this.rng.chance(config.chance)) return;
+
+    const pool = Object.keys(config.pool).filter((id) => eventAvailable(config.pool[id], state));
+    if (pool.length === 0) return;
+
+    const id = this.rng.pick(pool);
+    const def = config.pool[id];
+    state.data.pending = { id };
+    state.data.popup = {
+      kind: 'event',
+      icon: def.icon,
+      text: `${def.name}. ${def.text}`,
+      button: 'Понятно',
+    };
+    this.chronicle.add(state, { kind: 'event', icon: def.icon, text: `Событие: ${def.name}` });
+  }
+
+  /** Варианты текущего события в виде выборов для интерфейса. */
+  pendingChoices() {
+    const pending = this.state.data.pending;
+    if (!pending) return [];
+    const def = BALANCE.events.choice.pool[pending.id];
+    if (!def) return [];
+
+    return def.options.map((option, index) => {
+      const cost = resolveKeys(option.cost, this.state);
+      const gains = resolveKeys(option.gain, this.state);
+      const takes = resolveKeys(option.take, this.state);
+
+      const effects = [
+        ...Object.entries(gains).map(([key, amount]) => ({
+          icon: BALANCE.resources[key].icon, delta: amount, good: true,
+        })),
+        ...Object.entries(takes).map(([key, amount]) => ({
+          icon: BALANCE.resources[key].icon, delta: -amount, good: false,
+        })),
+        ...(option.people
+          ? [{ icon: '👥', delta: option.people, unit: 'жителей', good: true }]
+          : []),
+        ...(option.moods ?? []).map((mood) => ({
+          icon: BALANCE.meters.happiness.icon,
+          delta: mood.delta,
+          unit: `${mood.days} дн.`,
+          good: mood.delta > 0,
+        })),
+      ];
+
+      return {
+        id: `event:${index}`,
+        group: 'event',
+        label: option.label,
+        icon: option.icon,
+        cost,
+        requirements: toRequirements(cost),
+        effects,
+        workers: 0,
+        affordable: canAfford(this.state, cost),
+      };
+    });
+  }
+
+  /** Выбор варианта события: списывается стоимость, применяются эффекты. */
+  #resolveEvent(index) {
+    const pending = this.state.data.pending;
+    const def = pending && BALANCE.events.choice.pool[pending.id];
+    const option = def?.options[index];
+    if (!option) return { ok: false, note: null };
+
+    const cost = resolveKeys(option.cost, this.state);
+    if (!spend(this.state, cost)) return { ok: false, note: null };
+
+    // Потери забирают сколько есть и не блокируют выбор
+    for (const [key, amount] of Object.entries(resolveKeys(option.take, this.state))) {
+      this.state.addResource(key, -Math.min(amount, this.state.resource(key)));
+    }
+    for (const [key, amount] of Object.entries(resolveKeys(option.gain, this.state))) {
+      this.state.addResource(key, amount);
+    }
+    if (option.people) {
+      this.state.addResource('population', option.people);
+      this.state.stats.citizensArrived += option.people;
+    }
+    for (const mood of option.moods ?? []) this.state.addMood(mood);
+
+    this.state.data.pending = null;
+    this.state.normalize();
+
+    return {
+      ok: true,
+      note: { kind: 'event', icon: def.icon, text: `${def.name}: ${option.label}` },
+    };
   }
 
   /** Игрок закрыл попап: выборы снова доступны. */
@@ -515,6 +654,13 @@ export class Engine {
     const moodBefore = state.happinessLevel;
     state.setHappiness(computeHappiness(state));
 
+    // Модификаторы уже учтены в уровне: теперь их срок уменьшается
+    state.tickMoods();
+
+    // Сколько дней подряд народ на −2: по этому счётчику решается бунт
+    const lowNow = state.happinessLevel <= -2 && state.population >= 6;
+    state.data.lowMoodDays = lowNow ? state.data.lowMoodDays + 1 : 0;
+
     if (state.happinessLevel !== moodBefore) {
       const def = BALANCE.happiness.levels[String(state.happinessLevel)];
       this.chronicle.add(state, {
@@ -565,6 +711,9 @@ export class Engine {
     // Переход на тир — в конце дня, если накоплены все требования
     if (!state.isOver) this.#checkTierUp();
 
+    // Событие с выбором: только если не открыт попап (переход важнее)
+    if (!state.isOver && !state.data.popup) this.#rollChoiceEvent();
+
     this.rollOffers();
 
     this.emit(EVENTS.DAY_ADVANCED, { day: state.day });
@@ -613,6 +762,7 @@ export class Engine {
       populationMax: () => state.population <= when.populationMax,
       populationMin: () => state.population >= when.populationMin,
       happinessMax:  () => state.happiness <= when.happinessMax,
+      lowDaysMin:    () => state.data.lowMoodDays >= when.lowDaysMin,
       happinessMin:  () => state.happiness >= when.happinessMin,
       foodMax:       () => state.resource(currentFoodKey(state)) <= when.foodMax,
       foodMin:       () => state.resource(currentFoodKey(state)) >= when.foodMin,

@@ -81,7 +81,8 @@ export function computeHappiness(state, taxIndex = state.taxRateIndex) {
   const [min, max] = happiness.range;
 
   const tax = taxes[taxIndex] ?? taxes[taxDefaultIndex];
-  const level = tax.happinessBase + socialEffect(state, 'happiness');
+  // База: налог и социальные здания. Плюс модификаторы: ожидание, события.
+  const level = tax.happinessBase + socialEffect(state, 'happiness') + state.moodSum();
 
   return Math.min(max, Math.max(min, level));
 }

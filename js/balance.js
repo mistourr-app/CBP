@@ -37,6 +37,27 @@ const HAPPINESS = {
   leavePerDayHigh: 5,   // столько уходит в день при −2
   leavePerDayLow: 2,    // столько уходит в день при −1
 
+  /**
+   * Модификаторы счастья. Живут между днями: уровень = база (налог + здания)
+   * плюс сумма активных модификаторов, в пределах −2..+2.
+   *
+   * Модификатор: { tag, delta, daysLeft }. Тег говорит, что снимает постройка
+   * (см. cures у зданий). Каждый день daysLeft уменьшается, истёкшие удаляются.
+   */
+  moods: {
+    waitTag: 'wait',
+    waitDelta: -1,   // один ход «Подождать»
+    waitDays: 2,     // сколько дней действует
+    waitCap: -2,     // сумма ожиданий не ниже этого, иначе мгновенный бунт
+    eventDays: 3,    // длительность штрафа от мгновенных событий
+    // Подписи тегов для интерфейса
+    names: {
+      wait: 'ожидание', festival: 'праздник', joy: 'радость', faith: 'вера',
+      fear: 'страх', grief: 'уныние', epidemic: 'болезнь', riot: 'волнения',
+      strain: 'теснота', curse: 'дурное знамение', event: 'событие',
+    },
+  },
+
   // Подписи уровня для интерфейса
   levels: {
     '-2': { icon: '😡', label: 'Народ бежит', tone: 'danger' },
@@ -73,10 +94,10 @@ export const BALANCE = {
   meta: {
     // Версия 4: тиры поселения, ресурсы по уровням, новые здания, религия
     // и вера удалены. Сохранения версии 3 несовместимы.
-    schema: 5,
-    balanceVersion: 4,
+    schema: 6,
+    balanceVersion: 5,
     // Метка сборки интерфейса: показывается в плашке города
-    build: '2026-10-11 · i',
+    build: '2026-10-11 · j',
   },
 
   // --------------------------------------------------------------------------
@@ -355,6 +376,7 @@ export const BALANCE = {
     },
     taverns: {
       name: 'Таверна', icon: '🍺',
+      cures: ['wait'],
       kind: 'social', levels: [2],
       cost: { gold: 50 }, workers: 0, produces: null, maintenance: 0.4,
       effects: { happiness: 1 },
@@ -405,12 +427,14 @@ export const BALANCE = {
     },
     hospital: {
       name: 'Больница', icon: '🏥',
+      cures: ['epidemic'],
       kind: 'social', levels: [3],
       cost: { gold: 100 }, workers: 0, produces: null, maintenance: 0.5,
       effects: { epidemicLossReduction: 2 },
     },
     guard: {
       name: 'Стража', icon: '👮',
+      cures: ['riot', 'fear'],
       kind: 'social', levels: [3],
       cost: { gold: 80 }, workers: 0, produces: null, maintenance: 0.4,
       effects: { guardDefense: 5, suppressionGuard: 3 },
@@ -467,6 +491,7 @@ export const BALANCE = {
     },
     theater: {
       name: 'Театр', icon: '🎭',
+      cures: ['wait', 'grief'],
       kind: 'social', levels: [4],
       cost: { gold: 200 }, workers: 0, produces: null, maintenance: 0.6,
       effects: { happiness: 1 },
@@ -560,13 +585,206 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   // Случайные события
   //
-  // Шанс в процентах: chanceBase + population / chancePerTwoPopulation
-  //                  + day / chancePerFiftyDays
+  // Шанс мгновенного события в процентах: chanceBase + population /
+  // chancePerTwoPopulation + day / chancePerFiftyDays, но не выше maxChance.
+  // Мгновенные события короткие: они не занимают выборы.
   // --------------------------------------------------------------------------
   events: {
-    chanceBase: 10,
-    chancePerTwoPopulation: 2,
+    chanceBase: 3,
+    chancePerTwoPopulation: 4, // population / 4 процента
     chancePerFiftyDays: 50,
+    maxChance: 12,
+
+    /**
+     * События с выбором. Занимают день: вместо обычных выборов показываются
+     * их варианты. Шанс в день маленький, пул большой.
+     *
+     * Вариант: { label, icon, cost?, take?, gain?, people?, moods? }
+     *   cost   — списывается, требуется наличие;
+     *   take   — забирается сколько есть, без требования (потери);
+     *   gain   — выдаётся;
+     *   people — прибавка жителей;
+     *   moods  — [{ tag, delta, days }] модификаторы счастья.
+     * Ресурс '$food' — пищевой ресурс текущего тира.
+     */
+    choice: {
+      chance: 0.06,
+      pool: {
+        festival_offer: {
+          name: 'Винный торговец', icon: '🍷',
+          text: 'Бродячий торговец предлагает бочку вина для праздника.',
+          options: [
+            { label: 'Купить бочку', icon: '🍷', cost: { gold: 40 }, moods: [{ tag: 'festival', delta: 1, days: 3 }] },
+            { label: 'Отказаться', icon: '🚫' },
+          ],
+        },
+        circus: {
+          name: 'Гастролёры', icon: '🎪',
+          text: 'Труппа просится в город.',
+          requiresBuildings: ['theater'],
+          options: [
+            { label: 'Заплатить 80 золота', icon: '🎭', cost: { gold: 80 }, moods: [{ tag: 'festival', delta: 1, days: 4 }] },
+            { label: 'Отказать', icon: '🚫' },
+          ],
+        },
+        wedding: {
+          name: 'Свадьба', icon: '💒',
+          text: 'В городе справляют свадьбу. Благословить?',
+          options: [
+            { label: 'Благословить', icon: '💍', moods: [{ tag: 'joy', delta: 1, days: 3 }] },
+            { label: 'Отказаться', icon: '🚫' },
+          ],
+        },
+        fair: {
+          name: 'Ярмарка', icon: '🎪',
+          text: 'Съезжаются торговцы со всей округи.',
+          minTier: 2,
+          options: [
+            { label: 'Продать доски', icon: '🪚', cost: { boards: 30 }, gain: { gold: 60 } },
+            { label: 'Пропустить', icon: '⏭️' },
+          ],
+        },
+        wanderer: {
+          name: 'Странствующий торговец', icon: '🧳',
+          text: 'Торговец предлагает свой товар.',
+          options: [
+            { label: 'Купить зерно', icon: '🍞', cost: { gold: 50 }, gain: { $food: 40 } },
+            { label: 'Продать зерно', icon: '💰', cost: { $food: 30 }, gain: { gold: 60 } },
+            { label: 'Отказаться', icon: '🚫' },
+          ],
+        },
+        smugglers: {
+          name: 'Контрабандисты', icon: '🕶️',
+          text: 'Двое предлагают камень по низкой цене.',
+          options: [
+            { label: 'Купить камень', icon: '🪨', cost: { gold: 30 }, gain: { stone: 40 }, moods: [{ tag: 'fear', delta: -1, days: 2 }] },
+            { label: 'Отказаться', icon: '🚫' },
+          ],
+        },
+        patron: {
+          name: 'Меценат', icon: '🎩',
+          text: 'Богатый горожанин хочет помочь городу деньгами.',
+          minTier: 3,
+          options: [
+            { label: 'Принять дар', icon: '💰', gain: { gold: 150 }, moods: [{ tag: 'joy', delta: 1, days: 2 }] },
+            { label: 'Отказаться', icon: '🚫' },
+          ],
+        },
+        fire: {
+          name: 'Пожар', icon: '🔥',
+          text: 'В квартале загорелся дом.',
+          options: [
+            { label: 'Тушить за золото', icon: '🧯', cost: { gold: 60 } },
+            { label: 'Организовать людей', icon: '🪣', moods: [{ tag: 'fear', delta: -1, days: 2 }] },
+            { label: 'Ничего не делать', icon: '🤷', take: { wood: 40 }, moods: [{ tag: 'grief', delta: -1, days: 2 }] },
+          ],
+        },
+        plague: {
+          name: 'Болезнь', icon: '🤒',
+          text: 'Болезнь ходит по улицам.',
+          minPopulation: 20,
+          options: [
+            { label: 'Заплатить лекарям', icon: '💊', cost: { gold: 50 } },
+            { label: 'Карантин', icon: '🚧', moods: [{ tag: 'epidemic', delta: -1, days: 2 }] },
+            { label: 'Ничего', icon: '🤞', moods: [{ tag: 'epidemic', delta: -2, days: 3 }] },
+          ],
+        },
+        drought: {
+          name: 'Засуха', icon: '🏜️',
+          text: 'Поля пересохли.',
+          options: [
+            { label: 'Купить еду', icon: '🍞', cost: { gold: 60 }, gain: { $food: 60 } },
+            { label: 'Ввести норму', icon: '📏', moods: [{ tag: 'grief', delta: -1, days: 3 }] },
+            { label: 'Терпеть', icon: '😓', take: { $food: 40 } },
+          ],
+        },
+        storm: {
+          name: 'Буря', icon: '⛈️',
+          text: 'Ветер сорвал крыши.',
+          options: [
+            { label: 'Ремонт за золото', icon: '🔨', cost: { gold: 40 } },
+            { label: 'Терпеть', icon: '😤', take: { wood: 30 }, moods: [{ tag: 'fear', delta: -1, days: 2 }] },
+          ],
+        },
+        rats: {
+          name: 'Крысы в амбаре', icon: '🐀',
+          text: 'Крысы пробрались в амбар.',
+          options: [
+            { label: 'Завести котов', icon: '🐈', cost: { gold: 30 } },
+            { label: 'Терпеть', icon: '😖', take: { $food: 30 } },
+          ],
+        },
+        refugees: {
+          name: 'Беженцы', icon: '🧳',
+          text: 'К воротам пришли люди из разорённой деревни.',
+          options: [
+            { label: 'Принять', icon: '🤝', cost: { $food: 20 }, people: 3, moods: [{ tag: 'strain', delta: -1, days: 3 }] },
+            { label: 'Отказать', icon: '🚪', moods: [{ tag: 'grief', delta: -1, days: 2 }] },
+          ],
+        },
+        strike: {
+          name: 'Забастовка', icon: '✊',
+          text: 'Ремесленники бросили работу.',
+          options: [
+            { label: 'Поднять жалованье', icon: '💰', cost: { gold: 60 } },
+            { label: 'Подавить', icon: '👊', moods: [{ tag: 'riot', delta: -2, days: 3 }] },
+            { label: 'Уступить', icon: '🙇', moods: [{ tag: 'grief', delta: -1, days: 2 }] },
+          ],
+        },
+        riot: {
+          name: 'Волнения', icon: '🔥',
+          text: 'Горожане вышли на площадь.',
+          minPopulation: 10,
+          options: [
+            { label: 'Откупиться', icon: '💸', cost: { gold: 80 }, moods: [{ tag: 'riot', delta: 1, days: 2 }] },
+            { label: 'Усмирить', icon: '🛡️', moods: [{ tag: 'riot', delta: -1, days: 2 }] },
+            { label: 'Ничего не делать', icon: '🤷', moods: [{ tag: 'riot', delta: -2, days: 3 }] },
+          ],
+        },
+        harvest: {
+          name: 'Урожайный год', icon: '🌾',
+          text: 'Поля дали богатый урожай.',
+          options: [
+            { label: 'Устроить праздник', icon: '🎉', cost: { $food: 40 }, moods: [{ tag: 'festival', delta: 2, days: 2 }] },
+            { label: 'Продать излишки', icon: '💰', cost: { $food: 40 }, gain: { gold: 50 } },
+            { label: 'Пропустить', icon: '⏭️' },
+          ],
+        },
+        pilgrims: {
+          name: 'Паломники', icon: '🚶',
+          text: 'Странники идут к святым местам и просят приюта.',
+          options: [
+            { label: 'Принять', icon: '🙏', cost: { $food: 20 }, moods: [{ tag: 'faith', delta: 1, days: 3 }] },
+            { label: 'Отказать', icon: '🚫' },
+          ],
+        },
+        inventor: {
+          name: 'Изобретатель', icon: '💡',
+          text: 'Изобретатель предлагает свой проект.',
+          requiresBuildings: ['school'],
+          options: [
+            { label: 'Спонсировать 150', icon: '⚙️', cost: { gold: 150 }, moods: [{ tag: 'joy', delta: 1, days: 4 }] },
+            { label: 'Отказать', icon: '🚫' },
+          ],
+        },
+        treasure: {
+          name: 'Клад', icon: '🏺',
+          text: 'Крестьянин нашёл старую карту с кладом.',
+          options: [
+            { label: 'Копать самому', icon: '⛏️', gain: { gold: 80 }, moods: [{ tag: 'fear', delta: -1, days: 1 }] },
+            { label: 'Продать карту', icon: '🗺️', gain: { gold: 40 } },
+          ],
+        },
+        omens: {
+          name: 'Знамение', icon: '☄️',
+          text: 'На небе появилась комета. Люди шепчутся.',
+          options: [
+            { label: 'Устроить ритуал', icon: '🕯️', cost: { gold: 50 } },
+            { label: 'Ждать', icon: '⏳', moods: [{ tag: 'curse', delta: -1, days: 4 }] },
+          ],
+        },
+      },
+    },
 
     definitions: {
       merchant: {
@@ -576,6 +794,7 @@ export const BALANCE = {
       },
       bandits: {
         name: 'Нападение бандитов', icon: '⚔️', kind: 'disaster',
+        moodTag: 'fear',
         minPopulation: 20,
         strengthBase: 10,
         strengthPerDays: 0.05,
@@ -589,6 +808,7 @@ export const BALANCE = {
       },
       disease: {
         name: 'Эпидемия', icon: '🤒', kind: 'disaster',
+        moodTag: 'epidemic',
         minPopulation: 30,
         lossPercentMin: 0.05,
         lossPercentMax: 0.35,
@@ -601,6 +821,7 @@ export const BALANCE = {
       },
       blizzard: {
         name: 'Метель', icon: '❄️', kind: 'disaster',
+        moodTag: 'fear',
         seasons: ['winter'],
         foodLossMax: 20,
         woodLossMax: 15,
@@ -608,6 +829,7 @@ export const BALANCE = {
       },
       famine_warning: {
         name: 'Запасы еды на исходе', icon: '⚠️', kind: 'warning',
+        moodTag: 'fear',
         foodBelowPopulationMultiplier: 3,
         happinessLoss: 1,
       },
@@ -654,7 +876,8 @@ export const BALANCE = {
       },
       {
         id: 'revolt',
-        when: { happinessMax: -2, populationMin: 6 },
+        // Бунт — не мгновенно: счастье на −2 должно держаться несколько дней подряд
+        when: { happinessMax: -2, populationMin: 6, lowDaysMin: 3 },
         reason: 'Народ восстал и прогнал вас из города.',
         icon: '🔥',
       },
@@ -716,6 +939,7 @@ export const BALANCE = {
       disaster: { className: 'kind-disaster', label: 'Бедствие' },
       social:   { className: 'kind-social',   label: 'Город' },
       warning:  { className: 'kind-warning',  label: 'Тревога' },
+      event:    { className: 'kind-social',   label: 'Событие' },
       end:      { className: 'kind-end',      label: 'Итог' },
     },
   },
