@@ -71,10 +71,10 @@ export const BALANCE = {
   meta: {
     // Версия 4: тиры поселения, ресурсы по уровням, новые здания, религия
     // и вера удалены. Сохранения версии 3 несовместимы.
-    schema: 4,
-    balanceVersion: 3,
+    schema: 5,
+    balanceVersion: 4,
     // Метка сборки интерфейса: показывается в плашке города
-    build: '2026-10-11 · f',
+    build: '2026-10-11 · g',
   },
 
   // --------------------------------------------------------------------------
@@ -95,7 +95,6 @@ export const BALANCE = {
       food: 50,
       wood: 30,
       stone: 20,
-      knowledge: 0,
       population: 10,
     },
     buildings: { houses: 1 },
@@ -113,7 +112,6 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   resources: {
     gold:       { name: 'Золото',    icon: '💰', tier: 0, unit: { one: 'золото', few: 'золота', many: 'золота' } },
-    knowledge:  { name: 'Знания',    icon: '🧠', tier: 0, unit: { one: 'знание', few: 'знания', many: 'знаний' } },
 
     // Пищевой ресурс меняется по уровням: зерно → мука → мясо → деликатесы
     food:       { name: 'Зерно',     icon: '🍞', tier: 1, isFood: true, unit: { one: 'зерна', few: 'зерна', many: 'зерна' } },
@@ -140,11 +138,22 @@ export const BALANCE = {
 
   // Порядок вывода в панели (видимые ресурсы выбираются по уровню)
   resourceOrder: [
-    'gold', 'food', 'wood', 'stone', 'knowledge',
+    'gold', 'food', 'wood', 'stone',
     'boards', 'brick', 'flour', 'clothes',
     'coal', 'metal', 'tools', 'books', 'meat',
     'machines', 'jewelry', 'wine', 'delicacies', 'press',
   ],
+
+  // --------------------------------------------------------------------------
+  // Попапы по центру экрана. Переход на тир — первый, дальше используют
+  // случайные события (отдельный этап).
+  // --------------------------------------------------------------------------
+  popups: {
+    tierUpButton: 'Ура!',
+  },
+
+  /** Иконка рабочих в требованиях выборов. */
+  workers: { icon: '👷' },
 
   // --------------------------------------------------------------------------
   // Уровни развития (SYSTEMS_SPEC §6)
@@ -157,27 +166,35 @@ export const BALANCE = {
       {
         id: 'settlement', name: 'Поселение', icon: '🛖',
         nextName: 'Деревня', nextIcon: '🏠',
+        upgradeText: 'Поздравляем, поселение стало деревней!',
         requirements: { wood: 100, stone: 100, food: 100 },
       },
       {
         id: 'village', name: 'Деревня', icon: '🏠',
         nextName: 'Городок', nextIcon: '🏘️',
+        upgradeText: 'Поздравляем, деревня стала городком!',
         requirements: { boards: 200, brick: 200, flour: 200, clothes: 200 },
       },
       {
         id: 'town', name: 'Городок', icon: '🏘️',
         nextName: 'Город', nextIcon: '🏙️',
+        upgradeText: 'Поздравляем, городок стал городом!',
         requirements: { metal: 300, coal: 300, tools: 300, books: 300, meat: 300 },
       },
       {
         id: 'city', name: 'Город', icon: '🏙️',
         nextName: 'Большой город', nextIcon: '🏛️',
+        upgradeText: 'Поздравляем, город стал большим городом!',
         requirements: { machines: 400, jewelry: 400, wine: 400, delicacies: 400, press: 400 },
       },
       {
         id: 'metropolis', name: 'Большой город', icon: '🏛️',
         nextName: null, nextIcon: null,
+        upgradeText: null,
         requirements: null,
+        // Временно: ресурсы последнего набора остаются видимыми, чтобы
+        // на высшем тире можно было построить «Чудо света»
+        keepVisible: ['machines', 'jewelry', 'wine', 'delicacies', 'press'],
       },
     ],
   },
@@ -234,7 +251,7 @@ export const BALANCE = {
   buildings: {
     // ---- Дороги: строятся на любом уровне, накапливаются ----------------
     roads: {
-      name: 'Дорога', actionLabel: 'Построить дорогу', icon: '🛣️',
+      name: 'Дорога', icon: '🛣️',
       kind: 'road', visual: false, levels: [1, 2, 3, 4],
       workers: 0, produces: null, maintenance: 0,
       costByLevel: {
@@ -252,7 +269,7 @@ export const BALANCE = {
 
     // ---- Дома ------------------------------------------------------------
     houses: {
-      name: 'Дом', actionLabel: 'Построить дом', icon: '🏠',
+      name: 'Дом', icon: '🏠',
       kind: 'house', levels: [1, 2, 3, 4],
       cost: { wood: 20, stone: 10 },
       costByLevel: {
@@ -268,25 +285,25 @@ export const BALANCE = {
 
     // ==== УРОВЕНЬ 1. ПОСЕЛЕНИЕ =============================================
     farms: {
-      name: 'Ферма', actionLabel: 'Построить ферму', icon: '🌾',
+      name: 'Ферма', icon: '🌾',
       kind: 'production', level: 1, levels: [1],
       cost: { gold: 15, wood: 10 }, workers: 2, produces: { food: 5 },
       maintenance: 0.2, unlock: { freeWorkers: 1 },
     },
     lumberMills: {
-      name: 'Лесопилка', actionLabel: 'Построить лесопилку', icon: '🪓',
+      name: 'Лесопилка', icon: '🪓',
       kind: 'production', level: 1, levels: [1],
       cost: { gold: 20, wood: 15 }, workers: 2, produces: { wood: 8 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     quarries: {
-      name: 'Карьер', actionLabel: 'Построить карьер', icon: '⛏️',
+      name: 'Карьер', icon: '⛏️',
       kind: 'production', level: 1, levels: [1],
       cost: { gold: 25, wood: 10, stone: 5 }, workers: 2, produces: { stone: 6 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     well: {
-      name: 'Колодец', actionLabel: 'Выкопать колодец', icon: '🕯️',
+      name: 'Колодец', icon: '🕯️',
       kind: 'social', levels: [1],
       cost: { stone: 15, wood: 10 }, workers: 0, produces: null, maintenance: 0.1,
       effects: { fireDays: -1 },
@@ -294,43 +311,43 @@ export const BALANCE = {
 
     // ==== УРОВЕНЬ 2. ДЕРЕВНЯ ===============================================
     sawmills: {
-      name: 'Пилорама', actionLabel: 'Построить пилораму', icon: '🪚',
+      name: 'Пилорама', icon: '🪚',
       kind: 'production', level: 2, levels: [2],
       cost: { gold: 40 }, workers: 2, produces: { boards: 12 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     brickworks: {
-      name: 'Кирпичный завод', actionLabel: 'Построить кирпичный завод', icon: '🧱',
+      name: 'Кирпичный завод', icon: '🧱',
       kind: 'production', level: 2, levels: [2],
       cost: { gold: 40 }, workers: 2, produces: { brick: 8 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     mills: {
-      name: 'Мельница', actionLabel: 'Построить мельницу', icon: '🌬️',
+      name: 'Мельница', icon: '🌬️',
       kind: 'production', level: 2, levels: [2],
       cost: { gold: 35 }, workers: 2, produces: { flour: 8 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     weavings: {
-      name: 'Ткацкая', actionLabel: 'Открыть ткацкую', icon: '🧵',
+      name: 'Ткацкая', icon: '🧵',
       kind: 'production', level: 2, levels: [2],
       cost: { gold: 35 }, workers: 2, produces: { clothes: 6 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     markets: {
-      name: 'Рынок', actionLabel: 'Открыть рынок', icon: '🛒',
+      name: 'Рынок', icon: '🛒',
       kind: 'social', levels: [2],
       cost: { gold: 30 }, workers: 0, produces: null, maintenance: 0.5,
       effects: { goldPerCitizen: 1 },
     },
     taverns: {
-      name: 'Таверна', actionLabel: 'Открыть таверну', icon: '🍺',
+      name: 'Таверна', icon: '🍺',
       kind: 'social', levels: [2],
       cost: { gold: 50 }, workers: 0, produces: null, maintenance: 0.4,
       effects: { happiness: 1 },
     },
     fireBrigades: {
-      name: 'Пожарная дружина', actionLabel: 'Создать пожарную дружину', icon: '🚒',
+      name: 'Пожарная дружина', icon: '🚒',
       kind: 'social', levels: [2],
       cost: { gold: 40 }, workers: 0, produces: null, maintenance: 0.3,
       effects: { fireDays: -2 },
@@ -338,61 +355,61 @@ export const BALANCE = {
 
     // ==== УРОВЕНЬ 3. ГОРОДОК ===============================================
     mines: {
-      name: 'Шахта', actionLabel: 'Построить шахту', icon: '⛏️',
+      name: 'Шахта', icon: '⛏️',
       kind: 'production', level: 3, levels: [3],
       cost: { gold: 80 }, workers: 3, produces: { coal: 6 },
       maintenance: 0.4, unlock: { freeWorkers: 1 },
     },
     smelters: {
-      name: 'Плавильня', actionLabel: 'Построить плавильню', icon: '🔥',
+      name: 'Плавильня', icon: '🔥',
       kind: 'production', level: 3, levels: [3],
       cost: { gold: 90 }, workers: 3, produces: { metal: 5 },
       maintenance: 0.4, unlock: { freeWorkers: 1 },
     },
     forges: {
-      name: 'Кузница', actionLabel: 'Построить кузницу', icon: '⚒️',
+      name: 'Кузница', icon: '⚒️',
       kind: 'production', level: 3, levels: [3],
       cost: { gold: 90 }, workers: 2, produces: { tools: 3 },
       maintenance: 0.4, unlock: { freeWorkers: 1 },
     },
     scriptoriums: {
-      name: 'Скрипторий', actionLabel: 'Открыть скрипторий', icon: '📜',
+      name: 'Скрипторий', icon: '📜',
       kind: 'production', level: 3, levels: [3],
       cost: { gold: 70 }, workers: 2, produces: { books: 3 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     cattleYards: {
-      name: 'Скотный двор', actionLabel: 'Построить скотный двор', icon: '🐄',
+      name: 'Скотный двор', icon: '🐄',
       kind: 'production', level: 3, levels: [3],
       cost: { gold: 60 }, workers: 2, produces: { meat: 4 },
       maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     school: {
-      name: 'Школа', actionLabel: 'Построить школу', icon: '🏫',
+      name: 'Школа', icon: '🏫',
       kind: 'social', levels: [3],
       cost: { gold: 80 }, workers: 0, produces: null, maintenance: 0.3,
-      effects: { knowledgePerDay: 1 },
+      effects: { happiness: 1 },
     },
     hospital: {
-      name: 'Больница', actionLabel: 'Построить больницу', icon: '🏥',
+      name: 'Больница', icon: '🏥',
       kind: 'social', levels: [3],
       cost: { gold: 100 }, workers: 0, produces: null, maintenance: 0.5,
       effects: { epidemicLossReduction: 2 },
     },
     guard: {
-      name: 'Стража', actionLabel: 'Нанять стражу', icon: '👮',
+      name: 'Стража', icon: '👮',
       kind: 'social', levels: [3],
       cost: { gold: 80 }, workers: 0, produces: null, maintenance: 0.4,
       effects: { guardDefense: 5, suppressionGuard: 3 },
     },
     bank: {
-      name: 'Банк', actionLabel: 'Открыть банк', icon: '🏦',
+      name: 'Банк', icon: '🏦',
       kind: 'social', levels: [3],
       cost: { gold: 120 }, workers: 0, produces: null, maintenance: 0.6,
       effects: { goldPerDay: 3 },
     },
     fireHouses: {
-      name: 'Пожарная часть', actionLabel: 'Открыть пожарную часть', icon: '🚒',
+      name: 'Пожарная часть', icon: '🚒',
       kind: 'social', levels: [3],
       cost: { gold: 70 }, workers: 0, produces: null, maintenance: 0.4,
       effects: { fireDays: -3 },
@@ -400,67 +417,74 @@ export const BALANCE = {
 
     // ==== УРОВЕНЬ 4. ГОРОД =================================================
     machineShops: {
-      name: 'Механическая мастерская', actionLabel: 'Построить мастерскую', icon: '⚙️',
+      name: 'Механическая мастерская', icon: '⚙️',
       kind: 'production', level: 4, levels: [4],
       cost: { gold: 150 }, workers: 3, produces: { machines: 2 },
       maintenance: 0.6, unlock: { freeWorkers: 1 },
     },
     jewelers: {
-      name: 'Ювелирная мастерская', actionLabel: 'Открыть ювелирную', icon: '💎',
+      name: 'Ювелирная мастерская', icon: '💎',
       kind: 'production', level: 4, levels: [4],
       cost: { gold: 150 }, workers: 2, produces: { jewelry: 2 },
       maintenance: 0.6, unlock: { freeWorkers: 1 },
     },
     wineries: {
-      name: 'Винодельня', actionLabel: 'Построить винодельню', icon: '🍷',
+      name: 'Винодельня', icon: '🍷',
       kind: 'production', level: 4, levels: [4],
       cost: { gold: 140 }, workers: 2, produces: { wine: 2 },
       maintenance: 0.6, unlock: { freeWorkers: 1 },
     },
     gastronomies: {
-      name: 'Гастрономия', actionLabel: 'Открыть гастрономию', icon: '🥂',
+      name: 'Гастрономия', icon: '🥂',
       kind: 'production', level: 4, levels: [4],
       cost: { gold: 160 }, workers: 2, produces: { delicacies: 2 },
       maintenance: 0.6, unlock: { freeWorkers: 1 },
     },
     printingHouses: {
-      name: 'Типография', actionLabel: 'Открыть типографию', icon: '🗞️',
+      name: 'Типография', icon: '🗞️',
       kind: 'production', level: 4, levels: [4],
       cost: { gold: 150 }, workers: 2, produces: { press: 2 },
       maintenance: 0.6, unlock: { freeWorkers: 1 },
     },
     townHall: {
-      name: 'Ратуша', actionLabel: 'Построить ратушу', icon: '🏛️',
+      name: 'Ратуша', icon: '🏛️',
       kind: 'social', levels: [4],
       cost: { gold: 250 }, workers: 0, produces: null, maintenance: 0.8,
       effects: { negativeDaysReduction: 1 },
     },
     theater: {
-      name: 'Театр', actionLabel: 'Построить театр', icon: '🎭',
+      name: 'Театр', icon: '🎭',
       kind: 'social', levels: [4],
       cost: { gold: 200 }, workers: 0, produces: null, maintenance: 0.6,
       effects: { happiness: 1 },
     },
     monument: {
-      name: 'Памятник', actionLabel: 'Возвести памятник', icon: '🗿',
+      name: 'Памятник', icon: '🗿',
       kind: 'social', levels: [4],
       cost: { gold: 300 }, workers: 0, produces: null, maintenance: 0.5,
       effects: { happiness: 1 },
     },
     aqueduct: {
-      name: 'Акведук', actionLabel: 'Построить акведук', icon: '🌐',
+      name: 'Акведук', icon: '🌐',
       kind: 'social', levels: [4],
       cost: { gold: 220 }, workers: 0, produces: null, maintenance: 0.6,
       effects: { foodPerDay: 4 },
     },
     harbour: {
-      name: 'Пристань', actionLabel: 'Построить пристань', icon: '⚓',
+      name: 'Пристань', icon: '⚓',
       kind: 'social', levels: [4],
       cost: { gold: 200 }, workers: 0, produces: null, maintenance: 0.6,
       effects: { goldPerDay: 5 },
     },
+    wonder: {
+      name: 'Чудо света', icon: '🌟',
+      kind: 'wonder', levels: [5],
+      cost: { machines: 400, jewelry: 400, wine: 400, delicacies: 400, press: 400 },
+      workers: 0, produces: null, maintenance: 1,
+      effects: {},
+    },
     fireStation: {
-      name: 'Городская пожарная станция', actionLabel: 'Построить пожарную станцию', icon: '🚨',
+      name: 'Городская пожарная станция', icon: '🚨',
       kind: 'social', levels: [4],
       cost: { gold: 400 }, workers: 0, produces: null, maintenance: 0.8,
       effects: { fireDays: -5 },
@@ -475,28 +499,28 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   technologies: {
     advancedFarming: {
-      name: 'Передовое земледелие', actionLabel: 'Развить передовое земледелие', icon: '🌱',
-      cost: { knowledge: 20 }, requiresBuilding: 'farms',
+      name: 'Передовое земледелие', icon: '🌱', tier: 1,
+      cost: { gold: 80, stone: 20 }, requiresBuilding: 'farms',
       productionBonus: { building: 'farms', resource: 'food', amount: 2 },
     },
     lumberProcessing: {
-      name: 'Обработка древесины', actionLabel: 'Развить обработку древесины', icon: '🌳',
-      cost: { knowledge: 15 }, requiresBuilding: 'lumberMills',
+      name: 'Обработка древесины', icon: '🌳', tier: 1,
+      cost: { gold: 60, stone: 20 }, requiresBuilding: 'lumberMills',
       productionBonus: { building: 'lumberMills', resource: 'wood', amount: 2 },
     },
     stoneMasonry: {
-      name: 'Каменная кладка', actionLabel: 'Развить каменную кладку', icon: '🪨',
-      cost: { knowledge: 15 }, requiresBuilding: 'quarries',
+      name: 'Каменная кладка', icon: '🪨', tier: 1,
+      cost: { gold: 60, wood: 30 }, requiresBuilding: 'quarries',
       productionBonus: { building: 'quarries', resource: 'stone', amount: 2 },
     },
     tradeRoutes: {
-      name: 'Торговые маршруты', actionLabel: 'Развить торговые маршруты', icon: '💰',
-      cost: { knowledge: 25 }, requiresBuilding: 'markets',
+      name: 'Торговые маршруты', icon: '💰', tier: 2,
+      cost: { gold: 150, boards: 50 }, requiresBuilding: 'markets',
       effectBonus: { building: 'markets', effect: 'goldPerDay', amount: 3 },
     },
     education: {
-      name: 'Образование', actionLabel: 'Развить образование', icon: '🎓',
-      cost: { knowledge: 30 }, requiresBuilding: 'school',
+      name: 'Образование', icon: '🎓', tier: 3,
+      cost: { gold: 200, books: 50 }, requiresBuilding: 'school',
       effectBonus: { building: 'school', effect: 'epidemicLossReduction', amount: 2 },
     },
   },
@@ -510,8 +534,9 @@ export const BALANCE = {
     trade: { foodCost: 15, goldGain: 30 },
     expedition: {
       cost: 10,
-      baseSuccessChance: 0.6,
-      knowledgeBonusPerHundred: 0.2,
+      // Шанс успеха выбирается случайно каждый день из этого набора
+      chances: [0.3, 0.4, 0.5, 0.6, 0.7],
+      chanceIcon: '🎲',
       // Награда: золото или материал текущего уровня
       goldReward: { min: 50, max: 99, weight: 0.33 },
       materialReward: { min: 20, max: 60, weight: 0.67 },
@@ -603,9 +628,8 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   // Условия окончания партии
   //
-  // Поражение проверяется сверху вниз. Победа проверяется последней и
-  // потому имеет приоритет. Итоговый проект (SYSTEMS_SPEC §6, подэтап 2.5)
-  // пока не реализован: победа — достижение последнего уровня.
+  // Поражение проверяется сверху вниз. Победа — постройка «Чудо света»
+  // на высшем тире (SYSTEMS_SPEC §6).
   // --------------------------------------------------------------------------
   endConditions: {
     defeat: [
@@ -629,9 +653,9 @@ export const BALANCE = {
       },
     ],
     victory: {
-      populationMin: 100,
-      tierMin: 5,
-      reason: 'Ваш город достиг величия. Вы выиграли!',
+      // Победа сразу после постройки этого здания на высшем тире
+      building: 'wonder',
+      reason: 'Чудо света построено. Ваш город вошёл в историю. Вы выиграли!',
       icon: '🎉',
     },
   },
@@ -646,7 +670,6 @@ export const BALANCE = {
   choices: {
     slots: 4,
     priority: [
-      'tier:up',
       'build:houses', 'build:farms', 'build:lumberMills', 'build:quarries', 'build:well',
       'build:roads',
       'build:sawmills', 'build:brickworks', 'build:mills', 'build:weavings', 'build:markets',
@@ -655,7 +678,7 @@ export const BALANCE = {
       'build:school', 'build:hospital', 'build:guard', 'build:bank', 'build:fireHouses',
       'build:machineShops', 'build:jewelers', 'build:wineries', 'build:gastronomies',
       'build:printingHouses', 'build:townHall', 'build:theater', 'build:monument',
-      'build:aqueduct', 'build:harbour', 'build:fireStation',
+      'build:aqueduct', 'build:harbour', 'build:fireStation', 'build:wonder',
       'develop:advancedFarming', 'develop:lumberProcessing', 'develop:stoneMasonry',
       'develop:tradeRoutes', 'develop:education',
       'tax',
@@ -665,7 +688,6 @@ export const BALANCE = {
       trade:      { label: 'Торговать', icon: '💵' },
       expedition: { label: 'Отправить экспедицию', icon: '🗺️' },
       tax:        { label: 'Изменить налоги', icon: '⚖️' },
-      tierUp:     { label: 'Перейти на следующий уровень', icon: '⬆️' },
       wait:       { label: 'Подождать', icon: '⏳' },
     },
   },

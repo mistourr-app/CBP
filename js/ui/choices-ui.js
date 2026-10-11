@@ -1,40 +1,51 @@
 // ============================================================================
-// choices-ui.js — кнопки выбора.
+// choices-ui.js - панель выборов.
 //
-// Создаются один раз и переиспользуются: на каждом ходу меняются только
-// текст, иконка и состояние disabled. Пересоздавать кнопки было бы заметно
-// дороже на слабых телефонах.
+// Четыре кнопки в матрице 2×2 (на телефоне тоже). Каждая кнопка: название,
+// строка требований иконками (ресурсы, рабочие, шанс), эффекты стрелками.
+// Слов «Построить» и текстов стоимости здесь нет: только иконки и числа.
 // ============================================================================
 
-import { el, h } from './dom.js';
+import { BALANCE } from '../balance.js';
+import { h } from './dom.js';
+import { deltaChip } from './delta.js';
+
+const SLOT_COUNT = 4;
 
 export class ChoicesPanel {
-  constructor(root, onSelect) {
+  /**
+   * @param {HTMLElement} root
+   * @param {(choice: object) => void} onSelect
+   * @param {{state: {resource(key: string): number}}} session  текущая партия: запасы для подсветки
+   */
+  constructor(root, onSelect, session) {
     this.root = root;
     this.onSelect = onSelect;
+    // Берём партию из сессии при каждой отрисовке: restore() заменяет объект
+    this.session = session;
     this.buttons = [];
     this.current = [];
     this.locked = false;
 
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < SLOT_COUNT; i += 1) {
       const icon = h('span', { class: 'choice__icon' });
       const text = h('span', { class: 'choice__text' });
-      const cost = h('span', { class: 'choice__cost' });
+      const meta = h('span', { class: 'choice__meta' });
       const body = h('span', { class: 'choice__body' });
-      body.append(text, cost);
+      body.append(text, meta);
 
       const button = h('button', {
         class: 'choice',
         attrs: { type: 'button' },
       });
-      button.append(h('span', { class: 'choice__key', text: String(i + 1) }), icon, body);
+      button.append(icon, body);
 
       button.addEventListener('click', () => {
         if (this.locked || button.disabled) return;
         this.onSelect(this.current[i]);
       });
 
-      this.buttons.push({ button, icon, text, cost });
+      this.buttons.push({ button, icon, text, meta });
       this.root.append(button);
     }
   }
@@ -43,7 +54,7 @@ export class ChoicesPanel {
     this.current = choices;
 
     for (let i = 0; i < this.buttons.length; i += 1) {
-      const { button, icon, text, cost } = this.buttons[i];
+      const { button, icon, text, meta } = this.buttons[i];
       const choice = choices[i];
 
       if (!choice) {
@@ -54,21 +65,57 @@ export class ChoicesPanel {
       button.hidden = false;
       button.disabled = this.locked || !choice.affordable;
       button.classList.toggle('choice--wait', Boolean(choice.isWait));
-      // textContent, а не innerHTML: сюда попадает игровой текст
+
+      // textContent, а не innerHTML: подписи приходят из данных игры
       icon.textContent = choice.icon;
       text.textContent = choice.label;
-      cost.textContent = choice.affordable
-        ? choice.costText
-        : choice.costText ? `не хватает: ${choice.costText}` : '';
+      meta.replaceChildren(...this.#metaNodes(choice));
     }
   }
 
   /**
-   * Блокировка на время хода. Просто ставит флаг: перерисовка происходит
-   * в render(), который сам учитывает флаг и оплату.
+   * Строка под названием: эффекты (если есть) либо требования иконками.
+   * Эффекты и требования не смешиваются в одной кнопке.
+   */
+  #metaNodes(choice) {
+    if (choice.effects?.length) {
+      return choice.effects.map((effect) => deltaChip(effect));
+    }
+
+    const nodes = [];
+
+    for (const { resource, amount } of choice.requirements ?? []) {
+      const def = BALANCE.resources[resource];
+      const missing = this.session.state.resource(resource) < amount;
+      nodes.push(requirement(def.icon, String(amount), missing));
+    }
+
+    if (choice.workers > 0) {
+      nodes.push(requirement(BALANCE.workers.icon, String(choice.workers), false));
+    }
+
+    if (choice.chance != null) {
+      nodes.push(requirement(BALANCE.economy.expedition.chanceIcon,
+        `${Math.round(choice.chance * 100)}%`, false));
+    }
+
+    return nodes;
+  }
+
+  /**
+   * Блокировка на время хода или попапа. Пересчитывает кнопки, чтобы
+   * состояние disabled сразу совпало с блокировкой.
    */
   setLocked(locked) {
     this.locked = locked;
     this.render(this.current);
   }
+}
+
+/** Одно требование: иконка и число. Нехватка подсвечивается. */
+function requirement(icon, value, missing) {
+  return h('span', {
+    class: missing ? 'req req--missing' : 'req',
+    text: `${icon} ${value}`,
+  });
 }

@@ -57,7 +57,7 @@ describe('состав выбора', () => {
     }
   });
 
-  it('подпись стоимости не содержит ошибок склонения', () => {
+  it('требования описаны данными, без текста: иконки и числа', () => {
     const { state, engine, rng } = freshDay();
     setup(state, {
       buildings: { houses: 8, farms: 3, lumberMills: 3, quarries: 3, markets: 2, taverns: 1, well: 1 },
@@ -66,20 +66,41 @@ describe('состав выбора', () => {
     state.setResource('wood', 100000);
     state.setResource('stone', 100000);
     state.setResource('food', 100000);
-    state.setResource('knowledge', 100000);
     state.setResource('population', 80);
 
     for (let day = 1; day <= BALANCE.choices.priority.length; day += 1) {
       state.data.day = day;
+      engine.rollOffers();
       for (const choice of generateChoices(engine, rng)) {
-        // Именительный падеж в подписи означает, что склонение не отработало
-        assert.doesNotMatch(
-          choice.costText,
-          /\b(древесина|еда|вера|знания|камень|золото)\b(?=,|$)/,
-          `${choice.id}: «${choice.costText}»`,
-        );
+        assert.equal(choice.costText, undefined, `${choice.id}: остался текст стоимости`);
+        for (const req of choice.requirements ?? []) {
+          assert.ok(BALANCE.resources[req.resource], `${choice.id}: нет ресурса ${req.resource}`);
+          assert.ok(Number.isInteger(req.amount) && req.amount > 0, `${choice.id}: ${req.amount}`);
+        }
       }
     }
+  });
+
+  it('названия зданий без слова «Построить»', () => {
+    const { state, engine, rng } = freshDay();
+    setup(state, { resources: { gold: 100000, wood: 100000, stone: 100000, food: 100000 } });
+    for (const choice of generateChoices(engine, rng)) {
+      assert.doesNotMatch(choice.label, /Построить|Построй/, choice.id);
+    }
+  });
+
+  it('производственное здание показывает иконку ресурса, который оно даёт', () => {
+    const { engine } = freshDay();
+    const farm = engine.availableActions().find((a) => a.id === 'build:farms');
+    assert.equal(farm.icon, BALANCE.resources.food.icon);
+  });
+
+  it('здания с рабочими показывают их число, без рабочих — нет', () => {
+    const { state, engine } = freshDay();
+    setup(state, { resources: { gold: 1000, wood: 1000, stone: 1000 }, buildings: { houses: 1 } });
+    const actions = engine.availableActions();
+    assert.equal(actions.find((a) => a.id === 'build:farms').workers, 2);
+    assert.equal(actions.find((a) => a.id === 'build:houses').workers, 0);
   });
 });
 
@@ -109,14 +130,6 @@ describe('доступность', () => {
     assert.ok(seenMarket, 'рынок так и не появился на втором уровне');
   });
 
-  it('на втором уровне предлагает переход, когда есть требования', () => {
-    const { state, engine } = freshDay();
-    state.data.tier = 1;
-    setup(state, { resources: { wood: 100, stone: 100, food: 100 } });
-
-    const ids = engine.availableActions().map((a) => a.id);
-    assert.ok(ids.includes('tier:up'), 'переход должен предлагаться с требованиями');
-  });
 
   it('помечает недоступные по деньгам действия как недоступные', () => {
     const { state, engine, rng } = freshDay();

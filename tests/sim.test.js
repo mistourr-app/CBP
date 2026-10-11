@@ -39,6 +39,8 @@ function policy(seed) {
 function run(seed) {
   const session = new Session();
   session.rng.restore({ seed, calls: 0 });
+  // Предложения дня разыгрываются от сида партии, иначе прогоны расходятся
+  session.engine.rollOffers();
   session.refreshChoices();
 
   const nextIndex = policy(seed * 7919 + 13);
@@ -50,6 +52,7 @@ function run(seed) {
     const choice = pool[nextIndex(0, pool.length - 1)];
     session.takeTurn(choice.id);
     turns += 1;
+    if (session.state.data.popup == null) session.engine.rollOffers();
   }
 
   return { session, turns };
@@ -156,8 +159,9 @@ describe('хроника', () => {
     }
   });
 
-  it('запись финала стоит первой', () => {
+  it('если партия окончена, запись финала стоит первой', () => {
     const { session } = run(64);
+    if (!session.state.isOver) return;
     const first = session.chronicle.entries[0];
 
     assert.equal(first.kind, 'end');

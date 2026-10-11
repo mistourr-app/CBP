@@ -436,7 +436,7 @@
   grid-template-columns: auto 1fr;
   align-items: center;
   gap: var(--sp-2);
-  min-height: 56px;
+  min-height: 64px;
   padding: var(--sp-2) var(--sp-3);
   font: inherit;
   font-size: var(--fs-sm);
@@ -491,15 +491,20 @@
   line-height: 1.25;
 }
 
-.choice__cost {
-  display: block;
-  margin-top: 1px;
+/* Строка под названием: требования иконками или эффекты стрелками */
+.choice__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-2);
+  margin-top: 2px;
+  font-family: var(--font-num);
   font-size: var(--fs-2xs);
-  font-style: italic;
-  color: var(--c-gold);
+  line-height: 1.2;
 }
 
-.choice:disabled .choice__cost { color: var(--c-text-faint); }
+/* Нехватка ресурса в требованиях подсвечивается */
+.req { color: var(--c-text-muted); white-space: nowrap; }
+.req--missing { color: var(--c-danger); }
 
 /* «Подождать» занимает обычный слот, как и остальные действия */
 .choice--wait {
@@ -618,7 +623,7 @@
 /* --- Адаптив ------------------------------------------------------------- */
 
 @media (max-width: 560px) {
-  .choices { grid-template-columns: 1fr; }
+  .choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .city__title { font-size: var(--fs-md); }
   .meter__label { font-size: 0.625rem; }
   .res { padding: var(--sp-1) 2px; }
@@ -638,5 +643,52 @@
 /* Очень низкие экраны (телефон в горизонте) — экономим вертикаль */
 @media (max-height: 560px) {
   .chronicle-panel { padding: var(--sp-2) var(--sp-3); }
-  .choice { min-height: 46px; }
+  .choice { min-height: 58px; }
+}
+/* --- Дельты: иконка, стрелка, величина ----------------------------------- */
+/* Единый паттерн изменения показателя: рост — зелёная стрелка вверх,
+   падение — красная стрелка вниз, без изменения — серая черта. */
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.delta__arrow { font-size: 0.6rem; }
+.delta--up .delta__arrow, .delta--up .delta__value { color: var(--c-success); }
+.delta--down .delta__arrow, .delta--down .delta__value { color: var(--c-danger); }
+.delta--flat .delta__arrow, .delta--flat .delta__value { color: var(--c-text-faint); }
+
+/* --- Попап по центру экрана ---------------------------------------------- */
+.popup {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  background: rgba(7, 11, 28, 0.62);
+}
+.popup[hidden] { display: none; }
+.popup__card {
+  width: min(92vw, 360px);
+  padding: var(--sp-5) var(--sp-4);
+  text-align: center;
+  background: var(--c-panel);
+  border: 1px solid var(--c-accent-line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+.popup__icon { font-size: 2.5rem; line-height: 1; margin-bottom: var(--sp-3); }
+.popup__text { margin: 0 0 var(--sp-4); font-size: var(--fs-md); font-weight: 600; line-height: 1.35; }
+.popup__button {
+  font: inherit;
+  font-weight: 700;
+  padding: var(--sp-2) var(--sp-5);
+  color: var(--c-text);
+  background: var(--c-accent);
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  touch-action: manipulation;
 }

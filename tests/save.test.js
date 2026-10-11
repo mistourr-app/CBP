@@ -24,8 +24,8 @@ function installStorage() {
   return storage;
 }
 
-const KEY = 'cbp.save.v4';
-const LEGACY_KEYS = ['cbp.save.v3', 'cbp.save.v2', 'cityBuilderSave'];
+const KEY = 'cbp.save.v5';
+const LEGACY_KEYS = ['cbp.save.v4', 'cbp.save.v3', 'cbp.save.v2', 'cityBuilderSave'];
 
 describe('формат сохранения', () => {
   let Save;

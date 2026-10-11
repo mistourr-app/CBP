@@ -14,7 +14,6 @@
 // ============================================================================
 
 import { BALANCE } from '../balance.js';
-import { formatResource } from './content.js';
 
 const { slots, priority, actions } = BALANCE.choices;
 
@@ -24,22 +23,6 @@ function priorityOf(actionId) {
   return priorityIndex.has(actionId) ? priorityIndex.get(actionId) : priority.length;
 }
 
-/** Подпись вида «20 древесины, 10 камня» для кнопки. */
-function describeEffects(cost = {}, gain = {}) {
-  const parts = [];
-
-  for (const [resource, amount] of Object.entries(cost)) {
-    if (!amount) continue;
-    parts.push(formatResource(amount, BALANCE.resources[resource].unit));
-  }
-  for (const [resource, amount] of Object.entries(gain)) {
-    if (!amount) continue;
-    parts.push(`+${formatResource(amount, BALANCE.resources[resource].unit)}`);
-  }
-
-  return parts.join(', ');
-}
-
 function buildWait() {
   return {
     id: 'wait',
@@ -47,6 +30,8 @@ function buildWait() {
     icon: actions.wait.icon,
     cost: {},
     gain: {},
+    requirements: [],
+    workers: 0,
     affordable: true,
     isWait: true,
   };
@@ -57,7 +42,7 @@ function buildWait() {
  *
  * @param {Engine} engine
  * @param {Rng}    rng
- * @returns {Array<{id,label,icon,cost,gain,affordable,costText,isWait}>}
+ * @returns {Array<{id,label,icon,requirements,workers,chance,effects,affordable,isWait}>}
  */
 export function generateChoices(engine, rng) {
   const candidates = engine.availableActions()
@@ -96,10 +81,7 @@ export function generateChoices(engine, rng) {
     if (picked.length >= capacity) break;
   }
 
-  return [...picked, buildWait()].map((choice) => ({
-    ...choice,
-    costText: describeEffects(choice.cost, choice.gain),
-  }));
+  return [...picked, buildWait()];
 }
 
 /** Циклический сдвиг списка — так же, как сдвиг его приоритета. */

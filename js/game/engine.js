@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Engine — дневной цикл и действия игрока.
 //
 // Здесь задаётся ПОРЯДОК событий внутри дня. Он важен: от него зависят
@@ -18,10 +18,11 @@
 import { BALANCE } from '../balance.js';
 import { EVENTS } from '../core/bus.js';
 import {
-  applyConsumption,
+applyConsumption,
   applyHappinessOutflow,
   applyProduction,
   applyTaxIncome,
+  computeTaxIncome,
   autoAssignWorkers,
   canAfford,
   computeHappiness,
@@ -34,12 +35,36 @@ import { rollDailyEvent } from './events.js';
 import { Chronicle } from './chronicle.js';
 import { formatResource } from './content.js';
 
+/** Иконка действия: у производственного здания — иконка того, что оно даёт. */
+function buildingIcon(def) {
+  if (def.kind === 'production' && def.produces) {
+    const [resource] = Object.keys(def.produces);
+    return BALANCE.resources[resource]?.icon ?? def.icon;
+  }
+  return def.icon;
+}
+
+/** Стоимость как список требований для интерфейса. */
+function toRequirements(cost = {}) {
+  return Object.entries(cost)
+    .filter(([, amount]) => amount > 0)
+    .map(([resource, amount]) => ({ resource, amount }));
+}
+
+/** Ставка налога в процентах для подписей: индекс → 10, 20, … 50. */
+function percentOf(index) {
+  return Math.round(BALANCE.taxes[index].rate * 100);
+}
+
 export class Engine {
   constructor(state, rng, bus) {
     this.state = state;
     this.rng = rng;
     this.bus = bus;
     this.chronicle = new Chronicle();
+
+    // Новая партия: предложений дня ещё нет, разыгрываем их сразу
+    if (state.data.offers.expeditionChance == null) this.rollOffers();
   }
 
   /** Полное описание состояния, включая хронику. */
@@ -55,7 +80,14 @@ export class Engine {
   // Действия игрока
   // --------------------------------------------------------------------------
 
-  /** Список действий, доступных сейчас: [{id, label, icon, cost, affordable}] */
+  /**
+   * Список действий на сейчас. Каждое действие описывает себя полностью,
+   * чтобы интерфейс не знал правил:
+   *   requirements — [{resource, amount}]: показываются иконками;
+   *   workers      — сколько рабочих нужно (0 — не нужны);
+   *   chance       — шанс успеха в долях (только экспедиция);
+   *   effects      — [{kind, icon, delta, unit}]: эффекты со стрелками (налог).
+   */
   availableActions() {
     const state = this.state;
     const out = [];
@@ -66,38 +98,30 @@ export class Engine {
       out.push({
         id: `build:${key}`,
         group: 'build',
-        label: def.actionLabel ?? `Построить: ${def.name.toLowerCase()}`,
-        icon: def.icon,
+        label: def.name,
+        icon: buildingIcon(def),
         cost,
+        requirements: toRequirements(cost),
+        workers: def.workers ?? 0,
         affordable: canAfford(state, cost),
       });
     }
 
-    // Переход на следующий уровень: списывается требование уровня
-    const tierDef = state.tierDef;
-    if (tierDef?.requirements) {
-      out.push({
-        id: 'tier:up',
-        group: 'tier',
-        label: BALANCE.choices.actions.tierUp.label,
-        icon: BALANCE.choices.actions.tierUp.icon,
-        cost: tierDef.requirements,
-        affordable: canAfford(state, tierDef.requirements),
-        detail: `${tierDef.nextName}`,
-      });
-    }
-
+    // Технологии: только свои тира и только за ресурсы текущего тира и золото
     for (const [key, def] of Object.entries(BALANCE.technologies)) {
       if (state.hasTechnology(key)) continue;
+      if (def.tier !== state.tier) continue;
       if (state.buildingCount(def.requiresBuilding) < 1) continue;
       if (!canAfford(state, def.cost)) continue;
 
       out.push({
         id: `develop:${key}`,
         group: 'develop',
-        label: def.actionLabel ?? `Развить: ${def.name.toLowerCase()}`,
+        label: def.name,
         icon: def.icon,
         cost: def.cost,
+        requirements: toRequirements(def.cost),
+        workers: 0,
         affordable: true,
       });
     }
@@ -110,37 +134,65 @@ export class Engine {
       label: BALANCE.choices.actions.trade.label,
       icon: BALANCE.choices.actions.trade.icon,
       cost: tradeCost,
+      requirements: toRequirements(tradeCost),
       gain: { gold: trade.goldGain },
+      workers: 0,
       affordable: canAfford(state, tradeCost),
     });
 
+    // Экспедиция: шанс успеха выбран на сегодня случайно и виден в требованиях
     const expeditionCost = { gold: expedition.cost };
+    const chance = state.data.offers.expeditionChance ?? expedition.chances[0];
     out.push({
       id: 'expedition',
       group: 'trade',
       label: BALANCE.choices.actions.expedition.label,
       icon: BALANCE.choices.actions.expedition.icon,
       cost: expeditionCost,
+      requirements: toRequirements(expeditionCost),
+      chance,
+      workers: 0,
       affordable: canAfford(state, expeditionCost),
     });
 
-    // Ставка налога — постоянная политика, поэтому предлагается не
-    // каждый день, а раз в taxChangeEveryDays: иначе она занимала бы
-    // слот постоянно и игрок не смог бы ею пользоваться.
-    if (this.#isTaxChangeDue(state)) {
-      const rate = state.taxRate;
+    // Налог: предложение на сегодня, ставка выбрана случайно, ресурсов не требует
+    const taxIndex = state.data.offers.taxIndex;
+    if (taxIndex != null) {
       out.push({
         id: 'tax',
         group: 'tax',
-        label: BALANCE.choices.actions.tax.label,
+        label: `${BALANCE.choices.actions.tax.label} ${percentOf(taxIndex)}%`,
         icon: BALANCE.choices.actions.tax.icon,
         cost: {},
+        requirements: [],
+        effects: this.#taxEffects(taxIndex),
+        workers: 0,
         affordable: true,
-        detail: `сейчас ${BALANCE.taxLabels[state.data.taxRateIndex]} · ${Math.round(rate.rate * 100)}%`,
       });
     }
 
     return out;
+  }
+
+  /**
+   * Эффекты смены налога относительно текущей ставки: разница счастья
+   * (уровень) и денег (золото в день). Расчёт тот же, что в игре.
+   */
+  #taxEffects(index) {
+    const state = this.state;
+    return [
+      {
+        kind: 'happiness',
+        icon: BALANCE.meters.happiness.icon,
+        delta: computeHappiness(state, index) - computeHappiness(state),
+      },
+      {
+        kind: 'gold',
+        icon: BALANCE.resources.gold.icon,
+        delta: computeTaxIncome(state, index) - computeTaxIncome(state),
+        unit: 'в день',
+      },
+    ];
   }
 
   /** Пора ли предлагать смену налога. */
@@ -173,6 +225,9 @@ export class Engine {
    * технологий («build:houses») и простые для остальных действий.
    */
   applyAction(actionId) {
+    // Пока открыт попап (например, переход на тир), выборы заблокированы
+    if (this.state.data.popup) return { ok: false, note: null };
+
     switch (actionId) {
       case 'wait':
         return { ok: true, note: null };
@@ -182,8 +237,6 @@ export class Engine {
         return this.#expedition();
       case 'tax':
         return this.#changeTax();
-      case 'tier:up':
-        return this.#tierUp();
       default:
         break;
     }
@@ -202,25 +255,27 @@ export class Engine {
    * ступень. Так решение остаётся в руках игрока, но не требует
    * отдельного окна настройки в каждом ходе.
    */
+  /**
+   * Смена налога: применяется ставка, которая выпала на сегодня.
+   * Ресурсов не требует. Предложение съедается, до следующего дня его нет.
+   */
   #changeTax() {
-    if (!this.#isTaxChangeDue(this.state)) return { ok: false, note: null };
+    const offer = this.state.data.offers.taxIndex;
+    if (offer == null) return { ok: false, note: null };
 
-    const next = (this.state.data.taxRateIndex + 1) % BALANCE.taxes.length;
-    this.state.data.taxRateIndex = next;
+    this.state.data.taxRateIndex = offer;
+    this.state.data.offers.taxIndex = null;
 
-    const rate = this.state.taxRate;
-    const mood = BALANCE.happiness.levels[String(rate.happinessBase)];
-    const gold = Math.floor(
-      this.state.population * rate.goldPerCitizen * (BALANCE.tierTaxMult[0] ?? 1),
-    );
+    const level = computeHappiness(this.state);
+    const mood = BALANCE.happiness.levels[String(level)];
+    const gold = computeTaxIncome(this.state);
 
     return {
       ok: true,
       note: {
         kind: 'trade',
-        icon: '⚖️',
-        text: `Налог ${Math.round(rate.rate * 100)}% (${BALANCE.taxLabels[next]}): `
-          + `${gold} золота в день, ${mood.icon} ${mood.label.toLowerCase()}`,
+        icon: BALANCE.meters.tax.icon,
+        text: `Налоги ${percentOf(offer)}%: ${mood.icon} ${mood.label.toLowerCase()}, ${gold} золота в день`,
       },
     };
   }
@@ -253,25 +308,57 @@ export class Engine {
   }
 
   /**
-   * Переход на следующий уровень поселения.
-   * Требования уровня списываются, рабочие прошлых зданий освобождаются
-   * (normalize), эффекты социальных зданий сохраняются.
+   * Переход на следующий тир. Выполняется автоматически в конце дня, когда
+   * накоплены все требования текущего тира. Ресурсы не списываются: прошлый
+   * тир просто перестаёт участвовать в игре. Переход показываем попапом.
    */
-  #tierUp() {
-    const requirements = this.state.tierDef?.requirements;
-    if (!requirements) return { ok: false, note: null };
-    if (!spend(this.state, requirements)) return { ok: false, note: null };
+  #checkTierUp() {
+    const state = this.state;
+    const current = state.tierDef;
+    if (!current?.requirements) return;
+    if (!canAfford(state, current.requirements)) return;
 
-    this.state.data.tier += 1;
-    this.state.normalize();
+    state.data.tier += 1;
+    state.normalize();
 
-    const tier = this.state.tierDef;
-    this.state.stats.tiersReached = (this.state.stats.tiersReached ?? 0) + 1;
-
-    return {
-      ok: true,
-      note: { kind: 'research', icon: tier.icon, text: `Поселение выросло: ${tier.name}` },
+    const next = state.tierDef;
+    state.data.popup = {
+      kind: 'tier',
+      icon: next.icon,
+      text: current.upgradeText,
+      button: BALANCE.popups.tierUpButton,
     };
+
+    this.chronicle.add(state, {
+      kind: 'research',
+      icon: next.icon,
+      text: `Поселение перешло на новый уровень: ${next.name}`,
+    });
+  }
+
+  /** Игрок закрыл попап: выборы снова доступны. */
+  dismissPopup() {
+    this.state.data.popup = null;
+    this.emit(EVENTS.STATE_CHANGED, this.state.data);
+  }
+
+  /**
+   * Случайные предложения на день: шанс экспедиции (каждый день) и ставка
+   * налога (в дни смены налога, не текущая). Выпадают здесь, чтобы выбор на
+   * экране совпадал с расчётом.
+   */
+  rollOffers() {
+    const { data } = this.state;
+    data.offers.expeditionChance = this.rng.pick(BALANCE.economy.expedition.chances);
+
+    if (this.#isTaxChangeDue(this.state)) {
+      const others = BALANCE.taxes
+        .map((_, index) => index)
+        .filter((index) => index !== data.taxRateIndex);
+      data.offers.taxIndex = this.rng.pick(others);
+    } else {
+      data.offers.taxIndex = null;
+    }
   }
 
   #develop(key) {
@@ -305,17 +392,14 @@ export class Engine {
   }
 
   #expedition() {
-    const { cost, baseSuccessChance, knowledgeBonusPerHundred, goldReward, materialReward, failureLoss } =
-      BALANCE.economy.expedition;
+    const { cost, goldReward, materialReward, failureLoss, chances } = BALANCE.economy.expedition;
 
     if (!spend(this.state, { gold: cost })) return { ok: false, note: null };
 
     this.state.stats.expeditionsSent += 1;
 
-    const chance = Math.min(
-      1,
-      baseSuccessChance + (this.state.resource('knowledge') / 100) * knowledgeBonusPerHundred,
-    );
+    // Шанс выбран на сегодня случайно (см. rollOffers)
+    const chance = this.state.data.offers.expeditionChance ?? chances[0];
 
     if (this.rng.chance(chance)) {
       // Награда: золото либо материал текущего уровня (прошлые не нужны)
@@ -414,6 +498,9 @@ export class Engine {
     const eventNote = rollDailyEvent(state, this.rng);
     if (eventNote) this.chronicle.add(state, eventNote);
 
+    // Переход на тир — в конце дня, если накоплены все требования
+    this.#checkTierUp();
+
     // События меняют показатели напрямую, поэтому приводим их к
     // согласованному виду перед проверкой окончания партии
     state.normalize();
@@ -421,6 +508,8 @@ export class Engine {
     // 9. Условия окончания
     state.stats.daysSurvived = state.day;
     this.#checkEndConditions();
+
+    this.rollOffers();
 
     this.emit(EVENTS.DAY_ADVANCED, { day: state.day });
     this.emit(EVENTS.STATE_CHANGED, state.data);
@@ -441,10 +530,8 @@ export class Engine {
     }
 
     // Победа проверяется последней и потому имеет приоритет
-    // Временно: победа — достижение последнего уровня. Итоговый проект
-    // (подэтап 2.5) заменит это условие.
     const victory = BALANCE.endConditions.victory;
-    if (state.population >= victory.populationMin && state.tier >= victory.tierMin) {
+    if (state.buildingCount(victory.building) > 0) {
       outcome = { status: 'won', reason: victory.reason, icon: victory.icon };
     }
 

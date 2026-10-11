@@ -15,7 +15,7 @@ const RESOURCE_COLORS = {
   food: 'var(--c-res-food)',
   wood: 'var(--c-res-wood)',
   stone: 'var(--c-res-stone)',
-  knowledge: 'var(--c-res-knowledge)',
+  
 };
 
 // Пороговые значения уровня предупреждения в панели ресурсов

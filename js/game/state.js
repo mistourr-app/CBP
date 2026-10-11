@@ -107,6 +107,16 @@ export function createInitialState() {
     /** Уровень счастья: от -2 до +2. Пересчитывается каждый день. */
     happiness: BALANCE.happiness.start,
 
+    /**
+     * Предложения на сегодня: случайная ставка налога (на день налогов)
+     * и случайный шанс экспедиции. Выбираются в конце дня, чтобы выбор
+     * на экране совпадал с расчётом эффекта.
+     */
+    offers: { taxIndex: null, expeditionChance: null },
+
+    /** Попап, который ждёт закрытия (переход на тир и т.п.). Выборы заблокированы. */
+    popup: null,
+
     status: 'running', // running | won | lost
     endReason: '',
     endIcon: '',
@@ -248,6 +258,8 @@ export class GameState {
     state.endIcon = typeof raw.endIcon === 'string' ? raw.endIcon : '';
 
     state.tier = Number.isInteger(raw.tier) ? raw.tier : state.tier;
+    state.offers = { ...state.offers, ...(raw.offers ?? {}) };
+    state.popup = raw.popup && typeof raw.popup === 'object' ? raw.popup : null;
     state.happiness = Number.isFinite(raw.happiness) ? raw.happiness : state.happiness;
     state.taxRateIndex = Number.isFinite(raw.taxRateIndex)
       ? raw.taxRateIndex

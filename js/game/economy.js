@@ -76,11 +76,11 @@ export function socialEffect(state, effect) {
  * База от ставки налога плюс сумма эффектов «счастье» от построенных
  * зданий. Результат ограничен пределами [-2, +2].
  */
-export function computeHappiness(state) {
+export function computeHappiness(state, taxIndex = state.taxRateIndex) {
   const { happiness, taxes, taxDefaultIndex } = BALANCE;
   const [min, max] = happiness.range;
 
-  const tax = state.taxRate ?? taxes[taxDefaultIndex];
+  const tax = taxes[taxIndex] ?? taxes[taxDefaultIndex];
   const level = tax.happinessBase + socialEffect(state, 'happiness');
 
   return Math.min(max, Math.max(min, level));
@@ -92,8 +92,8 @@ export function computeHappiness(state) {
  * Базовая ставка растёт с уровнем поселения; рынки добавляют золото с
  * каждого жителя; банк, пристань и дороги дают золото в день.
  */
-export function computeTaxIncome(state) {
-  const tax = state.taxRate;
+export function computeTaxIncome(state, taxIndex = state.taxRateIndex) {
+  const tax = BALANCE.taxes[taxIndex] ?? BALANCE.taxes[BALANCE.taxDefaultIndex];
   const tierMult = BALANCE.tierTaxMult[state.tier - 1] ?? 1;
   const perCitizen = tax.goldPerCitizen * tierMult + socialEffect(state, 'goldPerCitizen');
 
@@ -190,7 +190,6 @@ export function computeDaily(state) {
     foodKey: currentFoodKey(state),
     maintenance: computeMaintenance(state),
     foodConsumption: computeFoodConsumption(state),
-    knowledge: socialEffect(state, 'knowledgePerDay'),
     taxIncome: computeTaxIncome(state),
   };
 }
@@ -200,9 +199,11 @@ export function computeDaily(state) {
  * Ресурсы прошлых уровней скрыты и не производятся.
  */
 export function visibleResources(state) {
+  const keep = new Set(state.tierDef?.keepVisible ?? []);
+
   return BALANCE.resourceOrder.filter((key) => {
     const tier = BALANCE.resources[key].tier;
-    return tier === 0 || tier === state.tier;
+    return tier === 0 || tier === state.tier || keep.has(key);
   });
 }
 
@@ -279,8 +280,6 @@ export function applyProduction(state) {
     if (amount !== 0) state.addResource(resource, amount);
   }
 
-  const knowledge = socialEffect(state, 'knowledgePerDay');
-  if (knowledge !== 0) state.addResource('knowledge', knowledge);
 }
 
 /**

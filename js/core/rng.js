@@ -113,7 +113,7 @@ export class Rng {
     this.calls = (saved.calls ?? 0) >>> 0;
 
     // Пропускаем уже сделанные вызовы, чтобы восстановить позицию
-    const next = this._ensureGenerator();
-    for (let i = 0; i < this.calls; i += 1) next();
+    this._next = mulberry32(this.seed);
+    for (let i = 0; i < this.calls; i += 1) this._next();
   }
 }

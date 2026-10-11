@@ -20,6 +20,7 @@ import {
   computeProduction,
   computeTaxIncome,
   spend,
+  visibleResources,
 } from '../js/game/economy.js';
 import { makeSession, setup } from './helpers.js';
 
@@ -451,7 +452,6 @@ describe('подписи ресурсов', () => {
     assert.equal(formatResource(1, BALANCE.resources.stone.unit), '1 камень');
     assert.equal(formatResource(15, BALANCE.resources.gold.unit), '15 золота');
     // Разряды разделяются неразрывным пробелом, чтобы число не рвалось переносом
-    assert.equal(formatResource(1000, BALANCE.resources.knowledge.unit), '1 000 знаний');
     assert.equal(formatResource(1234567, BALANCE.resources.gold.unit), '1 234 567 золота');
   });
 });
@@ -478,60 +478,159 @@ describe('защита от NaN', () => {
 // --- Смена налога как действие хода ---
 
 describe('смена налога', () => {
-  it('предлагается раз в taxChangeEveryDays дней, а не каждый день', () => {
+  it('предлагается только в дни смены налога, ставка случайна и не текущая', () => {
     for (let day = 1; day <= 30; day += 1) {
-      const { engine, state } = makeSession();
+      const { engine, state } = makeSession(day);
       state.data.day = day;
+      engine.rollOffers();
 
       const offered = engine.availableActions().some((a) => a.id === 'tax');
       assert.equal(offered, day % BALANCE.taxChangeEveryDays === 0, `день ${day}`);
+      if (offered) {
+        assert.notEqual(state.data.offers.taxIndex, state.taxRateIndex, `день ${day}: ставка та же`);
+      }
     }
   });
 
-  it('перебирает ставки по кругу', () => {
-    const { engine, state } = makeSession();
+  it('применяет выпавшую ставку и ресурсов не требует', () => {
+    const { engine, state } = makeSession(5);
     state.data.day = BALANCE.taxChangeEveryDays;
-    const start = state.taxRateIndex;
+    engine.rollOffers();
+    const target = state.data.offers.taxIndex;
+    const gold = state.resource('gold');
 
-    for (let step = 1; step <= BALANCE.taxes.length; step += 1) {
-      assert.equal(engine.applyAction('tax').ok, true);
-      assert.equal(state.taxRateIndex, (start + step) % BALANCE.taxes.length);
-    }
+    const action = engine.availableActions().find((a) => a.id === 'tax');
+    assert.deepEqual(action.requirements, [], 'налог не должен требовать ресурсов');
+
+    assert.equal(engine.applyAction('tax').ok, true);
+    assert.equal(state.taxRateIndex, target);
+    assert.equal(state.resource('gold'), gold);
   });
 
-  it('не меняется в неподходящий день', () => {
+  it('предложение съедается: без нового дня налога нет', () => {
+    const { engine, state } = makeSession(6);
+    state.data.day = BALANCE.taxChangeEveryDays;
+    engine.rollOffers();
+    engine.applyAction('tax');
+
+    assert.equal(engine.applyAction('tax').ok, false);
+  });
+
+  it('в неподходящий день налог не меняется', () => {
     const { engine, state } = makeSession();
     state.data.day = BALANCE.taxChangeEveryDays + 1;
+    engine.rollOffers();
     const before = state.taxRateIndex;
 
     assert.equal(engine.applyAction('tax').ok, false);
     assert.equal(state.taxRateIndex, before);
   });
 
-  it('после смены налога настроение народа меняется на следующий день', () => {
+  it('эффект показывает разницу с текущей ставкой: счастье и золото в день', () => {
+    const { engine, state } = makeSession();
+    state.setResource('population', 10);
+    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.taxRateIndex = 2;            // 30%: база 0, 3 золота с жителя
+    state.data.offers.taxIndex = 4;         // 50%: база -2, 5 золота с жителя
+
+    const action = engine.availableActions().find((a) => a.id === 'tax');
+    const [happy, gold] = action.effects;
+
+    assert.equal(happy.kind, 'happiness');
+    assert.equal(happy.delta, -2);
+    assert.equal(gold.kind, 'gold');
+    assert.equal(gold.delta, (5 - 3) * 10);
+  });
+
+  it('новая ставка действует на счастье следующего дня', () => {
     const { engine, state } = makeSession();
     state.data.day = BALANCE.taxChangeEveryDays;
-    state.data.taxRateIndex = 0;           // 10% -> +2
+    state.data.taxRateIndex = 0;            // 10%: база +2
     state.setHappiness(-2);
+    state.data.offers.taxIndex = 1;         // 20%: база +1
 
-    engine.applyAction('tax');              // -> 20%, база +1
+    engine.applyAction('tax');
     engine.advanceDay();
 
     assert.equal(state.happinessLevel, 1);
   });
 });
 
-// --- Дневной цикл целиком ---
+// --- Переход на тир (автоматический, в конце дня) ---
+
+describe('переход на тир', () => {
+  it('срабатывает в конце дня, когда накоплены все требования', () => {
+    const { engine, state } = makeSession();
+    // Еда с запасом: потребление дня списывает её до проверки перехода
+    setup(state, { resources: { wood: 100, stone: 100, food: 200 } });
+
+    engine.advanceDay();
+
+    assert.equal(state.tier, 2);
+    assert.ok(state.data.popup, 'должен появиться попап');
+    assert.match(state.data.popup.text, /стало деревней/);
+  });
+
+  it('ресурсы при переходе не списываются', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { wood: 150, stone: 120, food: 200 } });
+
+    engine.advanceDay();
+
+    assert.ok(state.resource('wood') >= 100 && state.resource('stone') >= 100);
+  });
+
+  it('без накопленных требований перехода нет', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { wood: 99, stone: 100, food: 100 } });
+
+    engine.advanceDay();
+
+    assert.equal(state.tier, 1);
+    assert.equal(state.data.popup, null);
+  });
+
+  it('пока попап открыт, выборы заблокированы; закрытие разблокирует', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { wood: 100, stone: 100, food: 200, gold: 500 } });
+    engine.advanceDay();
+
+    assert.equal(engine.applyAction('wait').ok, false);
+
+    engine.dismissPopup();
+    assert.equal(state.data.popup, null);
+    assert.equal(engine.applyAction('wait').ok, true);
+  });
+
+  it('на новом тире показываются только свои ресурсы и постройки', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { wood: 100, stone: 100, food: 200 } });
+    engine.advanceDay();
+
+    const visible = visibleResources(state);
+    assert.ok(!visible.includes('wood'), 'древесина первого тира скрыта');
+    assert.ok(visible.includes('boards'), 'доски второго тира видны');
+
+    const buildings = engine.availableActions()
+      .filter((a) => a.id.startsWith('build:'))
+      .map((a) => a.id.slice(6));
+    assert.ok(!buildings.includes('lumberMills'), 'лесопилка первого тира не предлагается');
+    assert.ok(buildings.includes('sawmills'), 'пилорама второго тира предлагается');
+  });
+});
 
 describe('день целиком', () => {
   it('счастье пересчитывается каждый день по ставке налога', () => {
     const { engine, state } = makeSession();
-    state.data.taxRateIndex = 4;           // 50% -> -2
+    state.data.taxRateIndex = 4;           // 50% -> база -2
     state.setHappiness(2);
 
     engine.advanceDay();
 
-    assert.equal(state.happinessLevel, -2);
+    // Случайное событие «Волнения» после подавления может поднять уровень на шаг,
+    // поэтому проверяем диапазон: база ставки плюс не больше одного шага от события
+    assert.ok(state.happinessLevel <= -1, `уровень ${state.happinessLevel}`);
+    assert.ok(state.happinessLevel >= -2);
   });
 
   it('недовольство уводит жителей каждый день', () => {
@@ -560,5 +659,46 @@ describe('день целиком', () => {
 
     assert.ok(state.happinessLevel > 0, 'народ доволен');
     assert.ok(state.resource('gold') > 0, 'казна пополнилась налогом');
+  });
+});
+
+// --- Победа: «Чудо света» на высшем тире ---
+
+describe('победа', () => {
+  it('постройка «Чудо света» завершает партию победой', () => {
+    const { engine, state } = makeSession();
+    state.data.tier = 5;
+    setup(state, { resources: { machines: 400, jewelry: 400, wine: 400, delicacies: 400, press: 400 } });
+
+    const result = engine.applyAction('build:wonder');
+    assert.equal(result.ok, true);
+
+    engine.advanceDay();
+    assert.equal(state.status, 'won');
+  });
+
+  it('«Чудо света» нельзя построить раньше высшего тира', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { machines: 400, jewelry: 400, wine: 400, delicacies: 400, press: 400 } });
+
+    assert.equal(engine.applyAction('build:wonder').ok, false);
+  });
+});
+
+// --- Экспедиция: шанс случайный и виден в требованиях ---
+
+describe('экспедиция', () => {
+  it('шанс успеха берётся из набора и показан в требованиях', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { gold: 100 } });
+    state.data.offers.expeditionChance = 0.6;
+
+    const action = engine.availableActions().find((a) => a.id === 'expedition');
+    assert.equal(action.chance, 0.6);
+    assert.ok(BALANCE.economy.expedition.chances.includes(action.chance));
+  });
+
+  it('набор шансов содержит только значения от 30% до 70%', () => {
+    assert.deepEqual(BALANCE.economy.expedition.chances, [0.3, 0.4, 0.5, 0.6, 0.7]);
   });
 });

@@ -11,6 +11,7 @@ import { registerServiceWorker } from '../core/pwa.js';
 import { startRender } from '../render/index.js';
 import { ChroniclePanel } from './chronicle-ui.js';
 import { ChoicesPanel } from './choices-ui.js';
+import { PopupLayer } from './popup.js';
 import { Screens } from './screens.js';
 import { StatsPanel } from './stats.js';
 
@@ -20,9 +21,12 @@ class App {
     this.screens = new Screens();
     this.stats = new StatsPanel(this.session);
     this.chronicle = new ChroniclePanel(this.session);
-    this.choices = new ChoicesPanel(document.getElementById('choices'), (choice) => {
-      this.#takeTurn(choice.id);
-    });
+    this.choices = new ChoicesPanel(
+      document.getElementById('choices'),
+      (choice) => this.#takeTurn(choice.id),
+      this.session,
+    );
+    this.popup = new PopupLayer(() => this.#closePopup());
 
     this.renderer = startRender({
       canvas: document.getElementById('bg-canvas'),
@@ -42,6 +46,7 @@ class App {
     this.stats.update();
     this.chronicle.render();
     this.choices.render(this.session.choices);
+    this.#syncPopup();
 
     if (this.session.state.isOver) this.screens.showOutcome(this.session.state.data);
 
@@ -56,9 +61,10 @@ class App {
     bus.on(EVENTS.DAY_ADVANCED, () => {
       this.stats.update();
       this.chronicle.render();
-      this.choices.setLocked(false);
       this.choices.render(this.session.choices);
       this.renderer?.onCityChanged();
+      // Попап (например, переход на тир) блокирует выборы до закрытия
+      this.#syncPopup();
     });
 
     bus.on(EVENTS.ACTION_RESOLVED, ({ note, ok }) => {
@@ -78,6 +84,23 @@ class App {
     return '';
   }
 
+  /**
+   * Попап открыт — выборы заблокированы. Состояние берём из партии, а не из
+   * попапа, поэтому и перезагрузка страницы показывает незакрытый попап.
+   */
+  #syncPopup() {
+    const popup = this.session.state.data.popup;
+    this.popup.show(popup);
+    this.choices.setLocked(Boolean(popup));
+  }
+
+  #closePopup() {
+    this.session.engine.dismissPopup();
+    this.session.refreshChoices();
+    this.#syncPopup();
+    this.choices.render(this.session.choices);
+  }
+
   #takeTurn(actionId) {
     if (this.session.state.isOver) return;
 
@@ -91,8 +114,8 @@ class App {
     // Действие не прошло — день не сдвинулся, событий не было,
     // поэтому разблокируем выборы вручную
     if (!ok) {
-      this.screens.showToast('Недостаточно ресурсов', 'danger');
-      this.choices.setLocked(false);
+      if (!this.session.state.data.popup) this.screens.showToast('Недостаточно ресурсов', 'danger');
+      this.#syncPopup();
     }
   }
 
