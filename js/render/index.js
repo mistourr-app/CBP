@@ -34,10 +34,13 @@ export function startRender({ canvas, session }) {
   }
 
   // Отдельный генератор: расход случайных чисел на окружение не должен
-  // сдвигать случайность самой игры
+  // сдвигать случайность самой игры.
+  //
+  // Передаём сам объект, а не его метод: обращение к decorRandom.float
+  // отвязывало бы метод от экземпляра, и внутри терялся бы this.
   const decorRandom = new Rng(0x5eed1234);
-  const environment = new Environment(scene.world, decorRandom.float);
-  const city = new CityView(scene.world, decorRandom.float);
+  const environment = new Environment(scene.world, decorRandom);
+  const city = new CityView(scene.world, decorRandom);
 
   const controller = {
     onCityChanged() {

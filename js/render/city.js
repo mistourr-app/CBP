@@ -169,9 +169,9 @@ function defineModels() {
 // ---------------------------------------------------------------------------
 
 export class CityView {
-  constructor(world, seededRandom) {
+  constructor(world, rng) {
     this.world = world;
-    this.rand = seededRandom;
+    this.rng = rng;
     this.root = new THREE.Group();
     this.world.add(this.root);
 

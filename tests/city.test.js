@@ -8,10 +8,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import * as THREE from '../vendor/three.module.min.js';
+import { Rng } from '../js/core/rng.js';
 import { CityView } from '../js/render/city.js';
+import { Environment } from '../js/render/environment.js';
 
 function makeCity() {
-  return new CityView(new THREE.Group(), () => 0.5);
+  return new CityView(new THREE.Group(), new Rng(1));
 }
 
 function instancePositions(mesh) {
@@ -152,6 +154,39 @@ describe('геометрия', () => {
         assert.ok(value >= 0 && value < vertexCount, `${key}: индекс ${value} вне диапазона`);
       }
     }
+  });
+});
+
+describe('генератор декораций', () => {
+  it('окружение принимает генератор, а не отвязанный метод', () => {
+    // Передача decorRandom.float вместо decorRandom отвязывала метод от
+    // объекта: внутри терялся this, и игра падала при запуске
+    assert.doesNotThrow(() => {
+      new Environment(new THREE.Group(), new Rng(1));
+    });
+  });
+
+  it('деревья и снег раскладываются конечно', () => {
+    const env = new Environment(new THREE.Group(), new Rng(7));
+
+    assert.ok(env.trunks.count > 0, 'деревья не расставлены');
+    assert.ok(Number.isFinite(env.trunks.position.x), 'дерево без координат');
+
+    const positions = env.snow.geometry.attributes.position;
+    for (let i = 0; i < positions.count; i += 1) {
+      assert.ok(Number.isFinite(positions.getX(i)), `снежинка ${i} без координат`);
+    }
+  });
+
+  it('декорации не сдвигают случайность игры', () => {
+    const gameRng = new Rng(42);
+    const decorRng = new Rng(1);
+
+    new Environment(new THREE.Group(), decorRng);
+
+    // Собственный генератор декораций тратит числа только у себя
+    const expected = new Rng(42).float();
+    assert.equal(gameRng.float(), expected);
   });
 });
 

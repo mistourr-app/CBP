@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>boot-check</title>
+  <style>
+    body { font: 14px/1.6 ui-monospace, monospace; background: #0b1020; color: #dfe7ff; padding: 16px; }
+    li { white-space: pre-wrap; }
+    li::first-letter { font-weight: 700; }
+  </style>
+</head>
+<body>
+<!--
+  Проверка запуска в настоящем браузере.
+
+  Юнит-тесты не видят ошибок, которые возникают только при сборке всех
+  слоёв вместе: обращения к несуществующему методу, потеря this, падение
+  при создании WebGL-контекста. Именно так ломалась игра при запуске.
+
+  Страницу открывает scripts/check-boot.js в headless-браузере.
+-->
+<canvas id="stage" width="320" height="240"></canvas>
+<ul id="report"></ul>
+
+<script type="module">
+const results = [];
+let failed = false;
+
+function check(ok, label, detail = '') {
+  results.push({ ok, label, detail });
+  const item = document.createElement('li');
+  item.textContent = `${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ' — ' + detail : ''}`;
+  item.style.color = ok ? '#8ef0a8' : '#ff8f8f';
+  document.getElementById('report').append(item);
+  if (!ok) failed = true;
+}
+
+function finish() {
+  document.title = failed ? 'FAILED' : `PASS ${results.length}`;
+}
+
+window.addEventListener('error', (event) => check(false, 'ошибка в скрипте', event.message));
+window.addEventListener('unhandledrejection', (event) =>
+  check(false, 'необработанный отказ', String(event.reason?.message ?? event.reason)));
+
+try {
+  localStorage.clear();
+
+  const [{ Session }, { Rng }, { startRender }] = await Promise.all([
+    import('../js/game/session.js'),
+    import('../js/core/rng.js'),
+    import('../js/render/index.js'),
+  ]);
+
+  const session = new Session();
+  session.rng.restore({ seed: 99, calls: 0 });
+  session.refreshChoices();
+
+  // Рендерер принимает объект генератора, а не его метод:
+  // отвязанный метод теряет this — так игра уже падала при запуске
+  const renderer = startRender({ canvas: document.getElementById('stage'), session });
+  check(Boolean(renderer), 'рендерер создан');
+
+  renderer.onCityChanged();
+  check(true, 'город синхронизирован');
+
+  // Случайная стратегия: важно лишь, что игра живёт и считает.
+  // Баланс — не предмет этой проверки.
+  let turns = 0;
+  while (!session.state.isOver && turns < 120) {
+    const affordable = session.choices.filter((c) => c.affordable);
+    const pool = affordable.length ? affordable : session.choices;
+    const choice = pool[Math.floor(session.rng.float() * pool.length)];
+
+    session.takeTurn(choice.id);
+    renderer.onCityChanged();
+    turns += 1;
+  }
+
+  const data = session.state.data;
+
+  check(turns >= 3, 'игра обработала ходы', String(turns));
+  check(session.state.isOver, 'партия дошла до конца', data.status);
+
+  check(Number.isFinite(data.resources.population), 'население конечно',
+        String(data.resources.population));
+  check(data.resources.maxPopulation >= data.resources.population,
+        'лимит не ниже населения',
+        `${data.resources.population}/${data.resources.maxPopulation}`);
+  check(Object.values(data.buildings).every((v) => Number.isFinite(v) && v >= 0),
+        'здания неотрицательны', JSON.stringify(data.buildings));
+  check(Object.values(data.resources).every(Number.isFinite), 'ресурсы конечны');
+
+  check(session.chronicle.entries.length > 1, 'хроника наполнена',
+        `${session.chronicle.entries.length} записей`);
+  check(!/^День \d/.test(session.chronicle.entries[0]?.text ?? ''),
+        'в хронике нет служебного шума', session.chronicle.entries[0]?.text ?? '');
+
+  // -- Рост населения: отдельный сценарий, чтобы не зависеть от баланса ----
+  const scenario = new Session();
+  scenario.rng.restore({ seed: 5, calls: 0 });
+  scenario.state.setResource('wood', 10000);
+  scenario.state.setResource('stone', 10000);
+  scenario.state.setResource('food', 10000);
+
+  scenario.engine.applyAction('build:houses');
+  scenario.state.setResource('food', 10000);
+  for (let day = 0; day < 6; day += 1) {
+    scenario.engine.advanceDay();
+    scenario.state.setResource('food', 10000);
+  }
+
+  check(scenario.state.population > 10, 'жители вселяются в новые дома',
+        `было 10, стало ${scenario.state.population}`);
+  check(scenario.state.stats.citizensArrived > 0, 'прирост учтён в статистике',
+        `${scenario.state.stats.citizensArrived} человек`);
+  check(scenario.state.maxPopulation === 15, 'дом добавил места для жителей',
+        `лимит ${scenario.state.maxPopulation}`);
+
+  const canvas = document.getElementById('stage');
+  const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+  check(Boolean(gl), 'WebGL-контекст доступен');
+
+  // Даём кадрам отрисоваться: ошибки в цикле проявятся здесь
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  check(true, 'кадры отрисованы без исключений');
+
+  renderer.dispose();
+} catch (error) {
+  check(false, 'исключение при запуске', `${error.name}: ${error.message}`);
+  check(false, 'стек', (error.stack ?? '').split('\n').slice(1, 4).join(' | '));
+}
+
+finish();
+</script>
+</body>
+</html>

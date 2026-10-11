@@ -22,9 +22,9 @@ const TREE_COUNT = 260;
 const CLOUD_COUNT = 14;
 
 export class Environment {
-  constructor(world, seededRandom) {
+  constructor(world, rng) {
     this.world = world;
-    this.rand = seededRandom;
+    this.rng = rng;
     this.materials = [];
     this.time = 0;
     this.season = 'spring';
@@ -137,8 +137,8 @@ export class Environment {
       let z = 0;
       let attempts = 0;
       do {
-        const angle = this.rand() * Math.PI * 2;
-        const radius = 190 + this.rand() * 190;
+        const angle = this.rng.float() * Math.PI * 2;
+        const radius = 190 + this.rng.float() * 190;
         x = Math.cos(angle) * radius;
         z = Math.sin(angle) * radius;
         attempts += 1;
@@ -149,10 +149,10 @@ export class Environment {
       placed.push({ x, z });
 
       const mesh = new THREE.Mesh(geometry, variants[i % variants.length]);
-      const width = 22 + this.rand() * 30;
+      const width = 22 + this.rng.float() * 30;
       mesh.position.set(x, -2, z);
-      mesh.scale.set(width, 6 + this.rand() * 9, width * (0.75 + this.rand() * 0.4));
-      mesh.rotation.y = this.rand() * Math.PI;
+      mesh.scale.set(width, 6 + this.rng.float() * 9, width * (0.75 + this.rng.float() * 0.4));
+      mesh.rotation.y = this.rng.float() * Math.PI;
       mesh.receiveShadow = true;
       mesh.castShadow = false;
       this.world.add(mesh);
@@ -195,19 +195,19 @@ export class Environment {
     while (placed < TREE_COUNT && attempts < TREE_COUNT * 25) {
       attempts += 1;
 
-      const angle = this.rand() * Math.PI * 2;
+      const angle = this.rng.float() * Math.PI * 2;
       // Внутренний радионс застройки свободен: деревья не растут в городе
-      const radius = 120 + this.rand() * 230;
+      const radius = 120 + this.rng.float() * 230;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
 
       // Не растим на русле реки и не в воде
       if (Math.abs(z - 150) < 22 && Math.abs(x) < 230) continue;
 
-      const s = 0.75 + this.rand() * 0.75;
+      const s = 0.75 + this.rng.float() * 0.75;
       position.set(x, 0, z);
-      scale.set(s, s * (0.85 + this.rand() * 0.4), s);
-      quaternion.setFromAxisAngle(up, this.rand() * Math.PI * 2);
+      scale.set(s, s * (0.85 + this.rng.float() * 0.4), s);
+      quaternion.setFromAxisAngle(up, this.rng.float() * Math.PI * 2);
       matrix.compose(position, quaternion, scale);
 
       this.trunks.setMatrixAt(placed, matrix);
@@ -238,22 +238,22 @@ export class Environment {
       const cluster = new THREE.Group();
 
       // Сгусток из нескольких лепестков вместо ровной коробки
-      const puffs = 3 + Math.floor(this.rand() * 3);
+      const puffs = 3 + Math.floor(this.rng.float() * 3);
       for (let p = 0; p < puffs; p += 1) {
         const puff = new THREE.Mesh(geometry, material);
         puff.position.set(
-          (this.rand() - 0.5) * 26,
-          (this.rand() - 0.5) * 4,
-          (this.rand() - 0.5) * 16,
+          (this.rng.float() - 0.5) * 26,
+          (this.rng.float() - 0.5) * 4,
+          (this.rng.float() - 0.5) * 16,
         );
-        puff.scale.set(10 + this.rand() * 9, 3.2 + this.rand() * 2.2, 7 + this.rand() * 6);
+        puff.scale.set(10 + this.rng.float() * 9, 3.2 + this.rng.float() * 2.2, 7 + this.rng.float() * 6);
         cluster.add(puff);
       }
 
       cluster.position.set(
-        (this.rand() - 0.5) * 320,
-        70 + this.rand() * 50,
-        (this.rand() - 0.5) * 320,
+        (this.rng.float() - 0.5) * 320,
+        70 + this.rng.float() * 50,
+        (this.rng.float() - 0.5) * 320,
       );
 
       this.world.add(cluster);
@@ -267,10 +267,10 @@ export class Environment {
     this.snowData = [];
 
     for (let i = 0; i < count; i += 1) {
-      positions[i * 3] = (this.rand() - 0.5) * 420;
-      positions[i * 3 + 1] = this.rand() * 140;
-      positions[i * 3 + 2] = (this.rand() - 0.5) * 420;
-      this.snowData.push(0.35 + this.rand() * 0.5);
+      positions[i * 3] = (this.rng.float() - 0.5) * 420;
+      positions[i * 3 + 1] = this.rng.float() * 140;
+      positions[i * 3 + 2] = (this.rng.float() - 0.5) * 420;
+      this.snowData.push(0.35 + this.rng.float() * 0.5);
     }
 
     const geometry = new THREE.BufferGeometry();

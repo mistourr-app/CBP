@@ -23,13 +23,31 @@ export class Rng {
   constructor(seed = Date.now()) {
     this.seed = seed >>> 0;
     this.calls = 0;
-    this._next = mulberry32(this.seed);
+  }
+
+  /**
+   * Создаёт генератор, если его нет.
+   *
+   * Раньше поле создавалось только в конструкторе. Если объект каким-то
+   * образом его терял — при восстановлении из сохранения или при обращении к
+   * методу без привязки к объекту — игра падала с
+   * «this._next is not a function». Теперь поле восстанавливается само.
+   *
+   * Метод обычный, а не приватный: приватный потребовал бы настоящего
+   * экземпляра класса и заменял понятную ошибку на
+   * «Receiver must be an instance of class Rng».
+   */
+  _ensureGenerator() {
+    if (typeof this._next !== 'function') {
+      this._next = mulberry32((this.seed ?? 0) >>> 0);
+    }
+    return this._next;
   }
 
   /** [0, 1) */
   float() {
-    this.calls += 1;
-    return this._next();
+    this.calls = (this.calls ?? 0) + 1;
+    return this._ensureGenerator()();
   }
 
   /** Целое в диапазоне [min, max] включительно. */
@@ -86,11 +104,16 @@ export class Rng {
     return { seed: this.seed, calls: this.calls };
   }
 
-  restore({ seed, calls }) {
-    this.seed = seed >>> 0;
-    this.calls = calls >>> 0;
-    this._next = mulberry32(this.seed);
+  /**
+   * Восстанавливает позицию в последовательности из сохранения.
+   * Принимает и обычный объект, и экземпляр Rng.
+   */
+  restore(saved = {}) {
+    this.seed = (saved.seed ?? Date.now()) >>> 0;
+    this.calls = (saved.calls ?? 0) >>> 0;
+
     // Пропускаем уже сделанные вызовы, чтобы восстановить позицию
-    for (let i = 0; i < this.calls; i += 1) this._next();
+    const next = this._ensureGenerator();
+    for (let i = 0; i < this.calls; i += 1) next();
   }
 }

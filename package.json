@@ -11,7 +11,8 @@
     "serve:stop": "node serve-ctl.js stop",
     "serve:status": "node serve-ctl.js status",
     "serve:restart": "node serve-ctl.js restart",
-    "test": "node --test"
+    "test": "node --test",
+    "check:boot": "node scripts/check-boot.js"
   },
   "engines": {
     "node": ">=18"
