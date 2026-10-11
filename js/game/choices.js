@@ -59,10 +59,10 @@ function normalize(action) {
  */
 export function generateChoices(engine, rng) {
   const available = engine.availableActions();
-  const tax = available.find((action) => action.id === 'tax');
+  const tax = available.find((action) => action.group === 'tax');
 
   const candidates = available
-    .filter((action) => action.id !== 'wait' && action.id !== 'tax')
+    .filter((action) => action.id !== 'wait' && action.group !== 'tax')
     .map(normalize)
     .sort((a, b) => priorityOf(a.id) - priorityOf(b.id));
 

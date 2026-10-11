@@ -372,7 +372,7 @@ describe('население', () => {
     state.data.offers.taxIndex = 3;         // 40%: народ недоволен
     const before = state.population;
 
-    engine.applyAction('tax');            // 30% -> 40%, народ недоволен
+    engine.applyAction('tax:3');          // 30% -> 40%, народ недоволен
     engine.advanceDay();
 
     assert.ok(state.population <= before, `жители прибыли: ${before} -> ${state.population}`);
@@ -514,7 +514,7 @@ describe('смена налога', () => {
       state.data.day = day;
       engine.rollOffers();
 
-      const action = engine.availableActions().find((a) => a.id === 'tax');
+      const action = engine.availableActions().find((a) => a.group === 'tax');
       assert.ok(action, `день ${day}: налог недоступен`);
       assert.notEqual(state.data.offers.taxIndex, state.taxRateIndex, `день ${day}: ставка та же`);
     }
@@ -527,10 +527,10 @@ describe('смена налога', () => {
     const target = state.data.offers.taxIndex;
     const gold = state.resource('gold');
 
-    const action = engine.availableActions().find((a) => a.id === 'tax');
+    const action = engine.availableActions().find((a) => a.group === 'tax');
     assert.deepEqual(action.requirements, [], 'налог не должен требовать ресурсов');
 
-    assert.equal(engine.applyAction('tax').ok, true);
+    assert.equal(engine.applyAction(action.id).ok, true);
     assert.equal(state.taxRateIndex, target);
     assert.equal(state.resource('gold'), gold);
   });
@@ -539,10 +539,11 @@ describe('смена налога', () => {
     const { engine, state } = makeSession(6);
     state.data.day = 4;
     engine.rollOffers();
-    engine.applyAction('tax');
+    const id = engine.availableActions().find((a) => a.group === 'tax').id;
+    engine.applyAction(id);
 
     // Одно изменение за ход: до следующего дня предложения нет
-    assert.equal(engine.applyAction('tax').ok, false);
+    assert.equal(engine.applyAction(id).ok, false);
   });
 
   it('эффект показывает разницу с текущей ставкой: счастье и золото в день', () => {
@@ -552,7 +553,7 @@ describe('смена налога', () => {
     state.data.taxRateIndex = 2;            // 30%: база 0, 3 золота с жителя
     state.data.offers.taxIndex = 4;         // 50%: база -2, 5 золота с жителя
 
-    const action = engine.availableActions().find((a) => a.id === 'tax');
+    const action = engine.availableActions().find((a) => a.group === 'tax');
     const [happy, gold] = action.effects;
 
     assert.equal(happy.kind, 'happiness');
@@ -568,7 +569,7 @@ describe('смена налога', () => {
     state.setHappiness(-2);
     state.data.offers.taxIndex = 1;         // 20%: база +1
 
-    engine.applyAction('tax');
+    engine.applyAction('tax:1');
     engine.advanceDay();
 
     assert.equal(state.happinessLevel, 1);

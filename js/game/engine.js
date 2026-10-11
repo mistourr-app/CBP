@@ -215,7 +215,8 @@ export class Engine {
     const taxIndex = state.data.offers.taxIndex;
     if (taxIndex != null) {
       out.push({
-        id: 'tax',
+        // Ставка входит в id: нажатие применяет ровно ту, что написана на кнопке
+        id: `tax:${taxIndex}`,
         group: 'tax',
         label: `${BALANCE.choices.actions.tax.label} ${percentOf(taxIndex)}%`,
         icon: BALANCE.choices.actions.tax.icon,
@@ -286,13 +287,12 @@ export class Engine {
         return this.#trade();
       case 'expedition':
         return this.#expedition();
-      case 'tax':
-        return this.#changeTax();
       default:
         break;
     }
 
     const [kind, key] = actionId.split(':');
+    if (kind === 'tax') return this.#changeTax(Number(key));
     if (kind === 'build') return this.#build(key);
     if (kind === 'develop') return this.#develop(key);
 
@@ -300,21 +300,19 @@ export class Engine {
   }
 
   /**
-   * Смена ставки налога: перебор к следующей ставке по кругу.
-   *
-   * Игрок не задаёт точку одним выбором — за ход ставка сдвигается на
-   * ступень. Так решение остаётся в руках игрока, но не требует
-   * отдельного окна настройки в каждом ходе.
+   * Смена налога: применяется ставка, записанная в самом действии (`tax:N`).
+   * Она должна совпадать с предложением дня. Ресурсов не требует. Предложение
+   * съедается: до следующего дня второй смены нет.
    */
-  /**
-   * Смена налога: применяется ставка, которая выпала на сегодня.
-   * Ресурсов не требует. Предложение съедается, до следующего дня его нет.
-   */
-  #changeTax() {
+  #changeTax(chosen) {
     const offer = this.state.data.offers.taxIndex;
-    if (offer == null) return { ok: false, note: null };
+    if (offer == null || !Number.isInteger(chosen)) return { ok: false, note: null };
+    if (chosen !== offer) return { ok: false, note: null };
+    if (!BALANCE.taxes[chosen] || chosen === this.state.data.taxRateIndex) {
+      return { ok: false, note: null };
+    }
 
-    this.state.data.taxRateIndex = offer;
+    this.state.data.taxRateIndex = chosen;
     this.state.data.offers.taxIndex = null;
 
     const level = computeHappiness(this.state);

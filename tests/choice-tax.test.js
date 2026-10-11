@@ -29,7 +29,7 @@ describe('налог в выборах', () => {
     for (let day = 1; day <= DAYS; day += 1) {
       state.data.day = day;
       engine.rollOffers();
-      if (generateChoices(engine, rng).some((c) => c.id === 'tax')) days += 1;
+      if (generateChoices(engine, rng).some((c) => c.group === 'tax')) days += 1;
     }
 
     const share = days / DAYS;
@@ -42,7 +42,7 @@ describe('налог в выборах', () => {
     state.data.day = 5;
     engine.rollOffers();
 
-    const tax = generateChoices(engine, rng).find((c) => c.id === 'tax');
+    const tax = generateChoices(engine, rng).find((c) => c.group === 'tax');
     if (tax) assert.deepEqual(tax.requirements, [], 'налог не должен требовать ресурсов');
   });
 
@@ -68,7 +68,7 @@ describe('налог в выборах', () => {
       engine.rollOffers();
 
       const choices = generateChoices(engine, rng);
-      const index = choices.findIndex((c) => c.id === 'tax');
+      const index = choices.findIndex((c) => c.group === 'tax');
       if (index >= 0) positions.add(index);
     }
     assert.ok(positions.size > 1, `налог всегда стоит на одном месте: ${[...positions]}`);

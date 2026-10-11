@@ -39,6 +39,23 @@ describe('восстановление выборов', () => {
     assert.deepEqual(reloaded.choices.map((c) => c.id), before);
   });
 
+  it('устаревшая кнопка налога не применяет другую ставку', () => {
+    const session = new Session();
+    session.rng.restore({ seed: 9, calls: 0 });
+    session.engine.rollOffers();
+    session.refreshChoices();
+
+    // Кнопка показывает ставку 40% (индекс 3), а предложение уже другое
+    const stale = 'tax:3';
+    session.state.data.offers.taxIndex = 0;
+    const before = session.state.taxRateIndex;
+
+    const result = session.takeTurn(stale);
+
+    assert.equal(result.ok, false, 'устаревшая кнопка должна быть отклонена');
+    assert.equal(session.state.taxRateIndex, before, 'ставка не должна измениться');
+  });
+
   it('ставка налога на кнопке совпадает с применённой', () => {
     const session = new Session();
     session.rng.restore({ seed: 5, calls: 0 });
@@ -48,11 +65,11 @@ describe('восстановление выборов', () => {
 
     const reloaded = new Session();
     reloaded.restore();
-    const tax = reloaded.choices.find((c) => c.id === 'tax');
+    const tax = reloaded.choices.find((c) => c.group === 'tax');
     if (!tax) return; // налога в этот день нет — проверять нечего
 
     const shown = percentOf(tax.label);
-    reloaded.takeTurn('tax');
+    reloaded.takeTurn(tax.id);
     const applied = Math.round(BALANCE.taxes[reloaded.state.taxRateIndex].rate * 100);
     assert.equal(applied, shown);
   });

@@ -61,8 +61,14 @@ class App {
     bus.on(EVENTS.DAY_ADVANCED, () => {
       this.stats.update();
       this.chronicle.render();
-      this.choices.render(this.session.choices);
       this.renderer?.onCityChanged();
+    });
+
+    // Выборы перерисовываем только когда список собран целиком (session.takeTurn
+    // пересобирает его ПОСЛЕ дня). Раньше список рисовался до пересборки, и на
+    // экране оставался вчерашний выбор налога, а применялась сегодняшняя ставка.
+    bus.on(EVENTS.STATE_CHANGED, () => {
+      this.choices.render(this.session.choices);
       // Попап (например, переход на тир) блокирует выборы до закрытия
       this.#syncPopup();
     });
