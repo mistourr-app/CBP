@@ -65,6 +65,8 @@ export class ChoicesPanel {
       button.hidden = false;
       button.disabled = this.locked || !choice.affordable;
       button.classList.toggle('choice--wait', Boolean(choice.isWait));
+      // Не хватает ресурсов: фон всей кнопки краснеет (цифры читаются поверх)
+      button.classList.toggle('choice--short', !choice.affordable && !choice.isWait);
 
       // textContent, а не innerHTML: подписи приходят из данных игры
       icon.textContent = choice.icon;
@@ -88,7 +90,7 @@ export class ChoicesPanel {
     for (const { resource, amount } of choice.requirements ?? []) {
       const def = BALANCE.resources[resource];
       const missing = this.session.state.resource(resource) < amount;
-      nodes.push(figure(def.icon, `−${amount}`, 'cost', missing));
+      nodes.push(figure(def.icon, String(amount), 'cost', missing));
     }
 
     for (const [resource, amount] of Object.entries(choice.gain ?? {})) {

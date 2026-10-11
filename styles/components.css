@@ -465,10 +465,24 @@
   transform: translateY(0) scale(0.99);
 }
 
+/* Заблокировано (ход идёт, открыт попап) — приглушаем всю кнопку */
 .choice:disabled {
   opacity: 0.42;
   cursor: not-allowed;
 }
+
+/* Не хватает ресурсов: тёмно-красный фон, непрозрачный, чтобы цифры читались.
+   Сама кнопка отключена (нельзя нажать), но не выцветает. */
+.choice--short:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, rgba(74, 18, 32, 0.96), rgba(52, 14, 26, 0.92));
+  border-color: var(--c-danger);
+}
+.choice--short:disabled .choice__text { color: var(--c-text); }
+/* На красном фоне красные цифры сливаются — нехватку пишем светлым и жирным */
+.choice--short:disabled .fig { color: var(--c-text); font-weight: 700; }
+.choice--short:disabled .fig--missing { text-decoration: none; }
 
 .choice__key {
   position: absolute;
