@@ -19,7 +19,12 @@ import { BALANCE } from '../balance.js';
 
 const { slots, actions, weights } = BALANCE.choices;
 
+/**
+ * «Подождать». Сразу видно, что за ход тратится: настроение (эффект −1 на N дней).
+ * Эффект показывается стрелкой вниз, как у любого другого выбора.
+ */
 function buildWait() {
+  const { waitDelta, waitDays } = BALANCE.happiness.moods;
   return {
     id: 'wait',
     label: actions.wait.label,
@@ -27,6 +32,12 @@ function buildWait() {
     cost: {},
     gain: {},
     requirements: [],
+    effects: [{
+      icon: BALANCE.meters.happiness.icon,
+      delta: waitDelta,
+      unit: `${waitDays} дн.`,
+      good: false,
+    }],
     workers: 0,
     affordable: true,
     isWait: true,

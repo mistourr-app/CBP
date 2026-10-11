@@ -59,6 +59,16 @@ describe('«Подождать»', () => {
     assert.equal(state.data.moods[0].daysLeft, M.waitDays);
   });
 
+  it('на кнопке «Подождать» видно, что тратится счастье', () => {
+    const { engine, rng, state } = makeSession(3);
+    const wait = generateChoices(engine, rng).find((c) => c.isWait);
+    const mood = wait.effects.find((e) => e.icon === BALANCE.meters.happiness.icon);
+    assert.ok(mood, 'у ожидания должен быть эффект счастья');
+    assert.equal(mood.delta, M.waitDelta);
+    assert.equal(mood.good, false, 'расход счастья — невыгодно');
+    assert.equal(state.tier, 1);
+  });
+
   it('подряд ожидания складываются, но не ниже waitCap', () => {
     const { state, engine } = makeSession();
     for (let i = 0; i < 6; i += 1) engine.applyAction('wait');
