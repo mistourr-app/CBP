@@ -122,6 +122,7 @@ export function applyConsumption(state) {
   }
 
   state.addResource('happiness', -BALANCE.happiness.dailyDecay);
+  state.clampHappiness();
 
   return notes;
 }

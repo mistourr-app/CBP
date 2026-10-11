@@ -1,58 +1,77 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>City Builder - Text Adventure</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css">
-    <meta name="theme-color" content="#1a1a2e">
-    <meta name="description" content="Choice-driven text-based city builder game">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>City Builder — Симулятор поселения</title>
+  <meta name="description" content="Choice-driven симулятор города: управляйте строительством, экономикой и настроением жителей.">
+  <meta name="theme-color" content="#070b1c">
+  <meta name="color-scheme" content="dark">
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon.svg">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="City Builder">
+
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/screens.css">
 </head>
 <body>
-    <button id="restart-game-btn" title="Начать заново">🔄</button>
-    <div id="game-container">
-        <canvas id="bg-canvas"></canvas>
-        <div id="ui-overlay">
-            <header>
-                <h1>ГОРОД <span id="city-name">НОВЫЙ РАССВЕТ</span></h1>
-                <div id="stats-bar">
-                    <div class="stat" id="stat-day"></div>
-                    <div class="stat" id="stat-population"></div>
-                    <div class="stat" id="stat-workers"></div>
-                    <div class="stat" id="stat-food"></div>
-                    <div class="stat" id="stat-wood"></div>
-                    <div class="stat" id="stat-stone"></div>
-                    <div class="stat" id="stat-gold"></div>
-                </div>
-            </header>
-            
-            <main id="story-panel">
-                <div id="history-panel">
-                    <ul id="history-list">
-                        <li>Основано поселение "Новый Рассвет"</li>
-                    </ul>
-                </div>
-            </main>
-            
-            <div id="choices-panel"></div>
-        </div>
-    </div>
-    
-    <div id="notification" class="hidden"></div>
-    <div id="game-over-screen" class="hidden">
-        <div class="game-over-content">
-            <h2>ИГРА ОКОНЧЕНА</h2>
-            <p id="game-over-message"></p>
-            <button id="restart-btn">НАЧАТЬ ЗАНОВО</button>
-        </div>
-    </div>
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="js/gameState.js"></script>
-    <script src="js/system.js"></script>
-    <script src="js/main.js"></script>
+  <div id="ui-overlay">
+    <header class="top-bar">
+      <div class="city">
+        <h1 class="city__title">ГОРОД <span class="city__name" id="city-name"></span></h1>
+        <p class="city__meta">
+          <span class="chip" id="chip-day"></span>
+          <span class="chip" id="chip-season"></span>
+        </p>
+      </div>
+      <button type="button" class="icon-btn" id="restart-btn" title="Начать партию заново" aria-label="Начать партию заново">🔄</button>
+    </header>
+
+    <section class="meters" id="meters" aria-label="Показатели поселения"></section>
+
+    <section class="resources" id="resources" aria-label="Ресурсы"></section>
+
+    <section class="chronicle-panel">
+      <h2 class="panel__title">Хроника</h2>
+      <ol class="chronicle" id="chronicle" aria-live="polite" aria-relevant="additions"></ol>
+    </section>
+
+    <section class="choices-panel">
+      <h2 class="panel__title">Ваш ход</h2>
+      <div class="choices" id="choices"></div>
+    </section>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <dialog class="dlg" id="confirm-dialog">
+    <h2 class="dlg__title">Начать заново?</h2>
+    <p class="dlg__text">Текущая партия будет стёрта безвозвратно.</p>
+    <div class="dlg__actions">
+      <button type="button" class="btn" id="confirm-cancel">Отмена</button>
+      <button type="button" class="btn btn--danger" id="confirm-ok">Начать заново</button>
+    </div>
+  </dialog>
+
+  <div class="screen screen--lost" id="outcome-screen" role="dialog" aria-modal="true" hidden>
+    <div class="screen__card">
+      <div class="screen__icon" id="outcome-icon"></div>
+      <h2 class="screen__title" id="outcome-title"></h2>
+      <p class="screen__text" id="outcome-text"></p>
+      <div class="summary" id="outcome-summary"></div>
+      <button type="button" class="btn btn--danger btn--block" id="outcome-restart">Начать новую партию</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/ui/app.js"></script>
 </body>
 </html>

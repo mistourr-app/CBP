@@ -34,8 +34,12 @@ export class Chronicle {
       count: 1,
     };
 
+    // Финальная запись не схлопывается с предыдущей: итог партии должен
+    // остаться в ленте даже если повторится
+    if (note.final) entry.final = true;
+
     const previous = this.entries[0];
-    if (!note.final && previous && previous.text === entry.text && previous.day === entry.day) {
+    if (!entry.final && previous && previous.text === entry.text && previous.day === entry.day) {
       previous.count += 1;
       return previous;
     }
