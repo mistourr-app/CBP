@@ -76,6 +76,34 @@ try {
         `${Math.round(widest)} / ${Math.round(box.right)}`);
   check(box.height < 90, 'полоса ресурсов низкая', `${Math.round(box.height)}px`);
 
+  // -- Прогресс к следующему уровню ---------------------------------------
+  //
+  // Порядок карточек совпадает с BALANCE.resourceOrder. Цель есть только
+  // у ресурсов, которые нужны для перехода: дерево, камень и еда.
+  const ORDER = ['gold', 'food', 'wood', 'stone', 'faith', 'knowledge'];
+  const WITH_GOAL = new Set(['food', 'wood', 'stone']);
+  const goals = cards2.map((n, i) => ({
+    key: ORDER[i],
+    text: n.querySelector('.res__goal')?.textContent ?? '',
+    barHidden: n.querySelector('.res__bar')?.hidden !== false,
+    fill: n.querySelector('.res__bar-fill')?.style.width ?? '',
+  }));
+
+  for (const goal of goals) {
+    if (WITH_GOAL.has(goal.key)) {
+      check(/^\d+\/\d+$/.test(goal.text), `${goal.key}: видно «собрано из целевого»`,
+            goal.text || 'пусто');
+      check(!goal.barHidden, `${goal.key}: полоса прогресса показана`);
+    } else {
+      check(goal.text === '' && goal.barHidden,
+            `${goal.key}: без цели, лишних подписей нет`,
+            `${goal.text}, полоса скрыта: ${goal.barHidden}`);
+    }
+  }
+  check(goals.filter((g) => g.fill).length === WITH_GOAL.size,
+        'полосы заполнены только у ресурсов с целью',
+        goals.map((g) => `${g.key}=${g.fill}`).join(' '));
+
   // -- Две части: верх прижат к верху, низ — к низу -----------------------
   const order = [...doc.querySelectorAll('#ui-overlay > *')].map((n) => n.className.split(' ')[0]);
   check(order.join(' → ') === 'top-bar → meters → resources → chronicle-panel → choices-panel',
@@ -132,11 +160,15 @@ try {
   check(!panel.classList.contains('is-open'), 'хроника свёрнута по умолчанию');
   check(toggle.getAttribute('aria-expanded') === 'false', 'состояние кнопки верное');
 
-  // Играем ходы, чтобы наполнить хронику
-  for (let i = 0; i < 6; i += 1) {
+  // Играем ходы, чтобы наполнить хронику.
+  //
+  // Первый ход — постройка, остальные «Подождать»: кликать всегда
+  // первую кнопку бессмысленно, как только ресурсов на неё не хватает,
+  // день не сдвинется и хроника останется пустой.
+  for (let i = 0; i < 12; i += 1) {
     const enabled = [...doc.querySelectorAll('.choice')].filter((n) => !n.disabled && !n.hidden);
     if (!enabled.length) break;
-    enabled[0].click();
+    (i === 0 ? enabled[0] : enabled.at(-1)).click();
     await new Promise((r) => setTimeout(r, 60));
   }
   await new Promise((r) => setTimeout(r, 200));
@@ -169,7 +201,6 @@ try {
 
   // -- Лимита населения нет в состоянии ----------------------------------
   const resources = app.session.state.data.resources;
-  check(!('maxPopulation' in resources), 'в состоянии нет лимита населения');
   check(resources.population > 0, 'население положительное', String(resources.population));
 
   document.title = failed ? 'FAILED' : `PASS ${log.length}`;

@@ -230,33 +230,6 @@ export function applyTaxIncome(state) {
 }
 
 /**
- * Прирост населения.
- *
- * В прототипе прироста не было вовсе — жители только убывали, поэтому
- * условие победы «население >= 100» было недостижимо и игра была
- * непроходима. Теперь, пока хватает еды, каждый день прибывает один
- * житель. Лимита нет: застройка домов увеличивает население напрямую,
- * а не открывает места в жёсткой ёмкости.
- */
-export function applyPopulationGrowth(state) {
-  const { growthPerDay, foodPerCitizenPerDay } = BALANCE.population;
-  if (growthPerDay <= 0) return null;
-
-  let arrived = 0;
-  for (let i = 0; i < growthPerDay; i += 1) {
-    const needForNext = foodPerCitizenPerDay * (state.population + 1);
-    if (state.resource('food') < needForNext) break;
-
-    state.addResource('population', 1);
-    arrived += 1;
-  }
-
-  if (arrived === 0) return null;
-  state.stats.citizensArrived += arrived;
-  return arrived;
-}
-
-/**
  * Автоназначение рабочих.
  *
  * Итерация идёт по порядку объявления зданий в BALANCE.buildings, поэтому при

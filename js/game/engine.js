@@ -20,7 +20,6 @@ import { EVENTS } from '../core/bus.js';
 import {
   applyConsumption,
   applyHappinessOutflow,
-  applyPopulationGrowth,
   applyProduction,
   applyTaxIncome,
   autoAssignWorkers,
@@ -352,20 +351,15 @@ export class Engine {
       });
     }
 
-    // 7. Прирост населения
-    const arrived = applyPopulationGrowth(state);
-    if (arrived) {
-      this.chronicle.add(state, {
-        kind: 'social',
-        icon: '👪',
-        text: `В поселение вселились новые жители: +${arrived}`,
-      });
-    }
-
-    // 8. Новосёлы сразу становятся рабочей силой
+    // 7. Свободные руки сразу берутся за работу
+    //
+    // Прироста населения здесь нет намеренно: новые жители приходят
+    // только через постройку домов и события с выбором (SYSTEMS_SPEC §2).
+    // Считать, что народ прибывает сам, значило бы отнять у игрока
+    // решение о застройке.
     autoAssignWorkers(state);
 
-    // 9. Событие дня
+    // 8. Событие дня
     const eventNote = rollDailyEvent(state, this.rng);
     if (eventNote) this.chronicle.add(state, eventNote);
 
@@ -373,7 +367,7 @@ export class Engine {
     // согласованному виду перед проверкой окончания партии
     state.normalize();
 
-    // 10. Условия окончания
+    // 9. Условия окончания
     state.stats.daysSurvived = state.day;
     this.#checkEndConditions();
 

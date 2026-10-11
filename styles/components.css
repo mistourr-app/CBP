@@ -193,6 +193,12 @@
   border-radius: var(--r-md);
   backdrop-filter: blur(var(--blur));
   -webkit-backdrop-filter: blur(var(--blur));
+
+  /* Полоса прогресса позиционируется от нижнего края карточки */
+  position: relative;
+
+  /* Место под подпись цели и полосу, иначе карточки разной высоты */
+  padding-bottom: 13px;
 }
 
 .res__icon {
@@ -226,6 +232,43 @@
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+/* Прогресс к следующему уровню: «34/100» и полоса под карточкой.
+   Полоска стоит вне потока, поэтому не добавляет высоты карточке. */
+.res__goal {
+  display: block;
+  font-family: var(--font-num);
+  font-size: 0.5625rem;
+  line-height: 1.2;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+.res__goal:empty { display: none; }
+
+.res__bar {
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: 5px;
+  height: 3px;
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.res__bar[hidden] { display: none; }
+
+.res__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--res-color, var(--c-bg-accent));
+}
+
+/* Цель набрана: ресурс выглядит собранным */
+.res--ready .res__goal { color: var(--c-success); }
+.res--ready .res__bar-fill { background: var(--c-success); }
 
 .res__delta {
   display: block;

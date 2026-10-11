@@ -9,7 +9,6 @@ import {
   applyConsumption,
   applyHappinessOutflow,
   applyTaxIncome,
-  applyPopulationGrowth,
   applyProduction,
   autoAssignWorkers,
   canAfford,
@@ -297,31 +296,39 @@ describe('обслуживание', () => {
 });
 
 describe('население', () => {
-  it('растёт, пока хватает еды', () => {
-    const { state } = makeSession();
-    setup(state, { resources: { food: 500 } });
+  it('само по себе не растёт: приток только от домов и событий', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { food: 100000 }, buildings: { farms: 1 } });
+    const before = state.population;
 
-    const arrived = applyPopulationGrowth(state);
+    for (let i = 0; i < 30; i += 1) engine.advanceDay();
 
-    assert.equal(arrived, BALANCE.population.growthPerDay);
-    assert.equal(state.population, 11);
+    assert.equal(state.population, before,
+      'жители не должны прибывать сами по себе');
+    assert.equal(state.stats.citizensArrived, 0);
   });
 
-  it('не растёт при нехватке еды', () => {
-    const { state } = makeSession();
-    state.setResource('food', 1);
+  it('дом вселяет жителя сразу при постройке', () => {
+    const { engine, state } = makeSession();
+    setup(state, { resources: { gold: 500, wood: 500, stone: 500 } });
+    const before = state.population;
 
-    assert.equal(applyPopulationGrowth(state), null);
-    assert.equal(state.population, 10);
+    engine.applyAction('build:houses');
+
+    assert.equal(state.population, before + BALANCE.population.residentsPerHouse);
+    assert.equal(state.stats.citizensArrived, BALANCE.population.residentsPerHouse);
   });
 
-  it('лимита населения нет: рост не упирается в потолок', () => {
-    const { state } = makeSession();
-    setup(state, { resources: { food: 100000 } });
+  it('смена налога не приводит жителей, а может только отпугнуть', () => {
+    const { engine, state } = makeSession();
+    state.data.day = BALANCE.taxChangeEveryDays;
+    const before = state.population;
 
-    for (let i = 0; i < 50; i += 1) applyPopulationGrowth(state);
+    engine.applyAction('tax');            // 30% -> 40%, народ недоволен
+    engine.advanceDay();
 
-    assert.ok(state.population > 50, `население упёрлось: ${state.population}`);
+    assert.ok(state.population <= before, `жители прибыли: ${before} -> ${state.population}`);
+    assert.equal(state.stats.citizensArrived, 0);
   });
 });
 
@@ -519,10 +526,9 @@ describe('день целиком', () => {
 
     engine.advanceDay();
 
-    // Ушло 5, но новый житель успевает поселиться: смена налога не
-    // обнуляет приток, а лишь делает его меньше оттока
-    const expected = 30 - BALANCE.happiness.leavePerDayHigh + BALANCE.population.growthPerDay;
-    assert.equal(state.population, expected);
+    // Уходит ровно столько, сколько задано уровнем счастья: приток из
+    // домов сюда не подмешивается
+    assert.equal(state.population, 30 - BALANCE.happiness.leavePerDayHigh);
     assert.equal(state.stats.citizensLost, BALANCE.happiness.leavePerDayHigh);
   });
 

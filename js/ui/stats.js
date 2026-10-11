@@ -111,19 +111,28 @@ export class StatsPanel {
       const def = BALANCE.resources[key];
 
       const value = h('span', { class: 'res__value' });
-      const delta = h('span', { class: 'res__delta' });
+
+      // Подпись «34/100» и полоса — прогресс к следующему уровню.
+      // Показываются только у ресурсов, которые входят в требования
+      // перехода: золото, вера и знания копились «просто так».
+      const goal = h('span', { class: 'res__goal' });
+      const fill = h('span', { class: 'res__bar-fill' });
+      const bar = h('span', { class: 'res__bar' });
+      bar.append(fill);
 
       const body = h('div', { class: 'res__body' });
-      body.append(value, h('span', { class: 'res__name', text: def.name }));
+      body.append(value, h('span', { class: 'res__name', text: def.name }), goal);
+
+      const delta = h('span', { class: 'res__delta' });
 
       const node = h('div', {
         class: 'res',
         title: def.name,
         style: { '--res-color': RESOURCE_COLORS[key] },
       });
-      node.append(h('span', { class: 'res__icon', text: def.icon }), body, delta);
+      node.append(h('span', { class: 'res__icon', text: def.icon }), body, bar, delta);
 
-      this.resourceNodes.set(key, { node, value, delta });
+      this.resourceNodes.set(key, { node, value, goal, bar, fill, delta });
       this.resourcesRoot.append(node);
     }
   }
@@ -187,8 +196,10 @@ export class StatsPanel {
   }
 
   #updateResources(state, daily) {
+    const level = BALANCE.development.levels[BALANCE.development.startLevelIndex];
+
     for (const key of BALANCE.resourceOrder) {
-      const { node, value, delta } = this.resourceNodes.get(key);
+      const { node, value, goal, bar, fill, delta } = this.resourceNodes.get(key);
       const amount = state.resource(key);
 
       value.textContent = formatNumber(amount);
@@ -202,8 +213,33 @@ export class StatsPanel {
         perDay > 0 ? 'res__delta--up' : perDay < 0 ? 'res__delta--down' : 'res__delta--flat'
       );
 
+      this.#updateGoal(node, goal, bar, fill, level, key, amount);
+
       const isLow = LOW_THRESHOLDS[key]?.(state) ?? false;
       node.classList.toggle('res--empty', isLow && amount <= 0);
     }
+  }
+
+  /** Показывает «собрано из целевого» для ресурсов, нужных для перехода. */
+  #updateGoal(node, goal, bar, fill, level, key, amount) {
+    const target = level?.requirements?.[key];
+
+    if (!target) {
+      goal.textContent = '';
+      bar.hidden = true;
+      node.classList.remove('res--ready');
+      return;
+    }
+
+    const done = Math.min(amount, target);
+    bar.hidden = false;
+
+    goal.textContent = `${formatNumber(done)}/${formatNumber(target)}`;
+    fill.style.width = `${Math.round((done / target) * 100)}%`;
+
+    // Цель достигнута — ресурс выглядит собранным, а не пустым
+    node.classList.toggle('res--ready', amount >= target);
+    node.title = `${node.title}: ${formatNumber(amount)} из ${formatNumber(target)} `
+      + `для «${level.nextName}»`;
   }
 }
