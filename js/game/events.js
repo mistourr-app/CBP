@@ -198,13 +198,6 @@ export function trigger(state, id, rng) {
         state.stats.citizensLost += deaths;
         state.addBuilding('houses', -housesRemoved);
 
-        // Разрушенные дома должны освобождать и лимит населения, иначе
-        // показатель «население / максимум» перестаёт отражать реальность
-        state.addResource(
-          'maxPopulation',
-          -housesRemoved * BALANCE.population.perHouseCapacity,
-        );
-
         note.text = `Осада! Потери: ${deaths} жителей, ${housesRemoved} домов`;
       }
       break;

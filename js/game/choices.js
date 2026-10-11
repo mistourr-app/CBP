@@ -61,12 +61,12 @@ function buildWait() {
  */
 export function generateChoices(engine, rng) {
   const candidates = engine.availableActions()
+    .filter((action) => action.id !== 'wait')
     .map((action) => ({
       ...action,
       cost: action.cost ?? {},
       gain: action.gain ?? {},
       affordable: action.affordable !== false,
-      isWait: action.id === 'wait',
     }))
     .sort((a, b) => priorityOf(a.id) - priorityOf(b.id));
 
@@ -80,6 +80,10 @@ export function generateChoices(engine, rng) {
   const shift = (engine.state.day - 1) % Math.max(1, priority.length);
   const rotated = rotate(candidates, shift);
 
+  // «Подождать» занимает последний слот всегда, а не только когда
+  // остальные варианты закончились: так его проще найти взглядом.
+  const capacity = slots - 1;
+
   const picked = [];
   const seen = new Set();
 
@@ -89,17 +93,10 @@ export function generateChoices(engine, rng) {
     if (seen.has(choice.id)) continue;
     seen.add(choice.id);
     picked.push(choice);
-    if (picked.length >= slots) break;
+    if (picked.length >= capacity) break;
   }
 
-  // «Подождать» есть всегда: если для него не нашлось места, отдаём ему
-  // последний слот — так же поступал прототип.
-  if (!picked.some((choice) => choice.isWait)) {
-    if (picked.length >= slots) picked[slots - 1] = buildWait();
-    else picked.push(buildWait());
-  }
-
-  return picked.slice(0, slots).map((choice) => ({
+  return [...picked, buildWait()].map((choice) => ({
     ...choice,
     costText: describeEffects(choice.cost, choice.gain),
   }));

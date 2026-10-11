@@ -23,13 +23,22 @@ describe('состав выбора', () => {
     }
   });
 
-  it('«Подождать» присутствует всегда', () => {
-    // Пустое поселение — самый бедный набор действий
+  it('«Подождать» стоит последним', () => {
     for (let day = 1; day <= 60; day += 1) {
       const { engine, rng } = freshDay({ seed: day, day });
       const choices = generateChoices(engine, rng);
-      assert.ok(choices.some((c) => c.isWait), `день ${day}: нет «Подождать»`);
+
+      assert.equal(choices.at(-1).id, 'wait', `день ${day}: «Подождать» не последний`);
+      assert.ok(choices.at(-1).isWait, `день ${day}: не помечен как ожидание`);
     }
+  });
+
+  it('«Подождать» единственный, даже если другие действия недоступны', () => {
+    const { engine, rng } = freshDay();
+    const choices = generateChoices(engine, rng);
+
+    assert.equal(choices.filter((c) => c.isWait).length, 1);
+    assert.equal(choices.at(-1).id, 'wait');
   });
 
   it('нет повторяющихся действий', () => {

@@ -92,7 +92,7 @@ export class Screens {
 
     const rows = [
       ['Дней прожито', formatNumber(stats.daysSurvived)],
-      ['Максимум жителей', formatNumber(state.resources.maxPopulation)],
+      ['Жителей', formatNumber(state.resources.population)],
       ['Построено зданий', formatNumber(stats.buildingsBuilt)],
       ['Вселилось жителей', formatNumber(stats.citizensArrived)],
       ['Событий пережито', formatNumber(stats.randomEvents)],

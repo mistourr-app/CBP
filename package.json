@@ -12,7 +12,9 @@
     "serve:status": "node serve-ctl.js status",
     "serve:restart": "node serve-ctl.js restart",
     "test": "node --test",
-    "check:boot": "node scripts/check-boot.js"
+    "check:boot": "node scripts/check-boot.js",
+    "check:ui": "node scripts/check-ui.js",
+    "check": "npm run test && npm run check:boot && npm run check:ui"
   },
   "engines": {
     "node": ">=18"

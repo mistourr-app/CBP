@@ -34,13 +34,13 @@ const POPULATION = {
   // убывали (голод, бандиты, эпидемия, волнения, осада), из-за чего победа
   // с требованием «население >= 100» была принципиально недостижима.
   //
-  // Рост идёт по мере застройки домов, которые поднимают maxPopulation,
-  // и только пока хватает еды. Это согласуется с SYSTEMS_SPEC §1.5:
-  // «приток жителей — исключительно через застройку домов и события».
+  // Лимита населения нет: новые жители прибывают, пока хватает еды.
+  // Дом вселяет жителя сразу при постройке, поэтому застройка остаётся
+  // главным способом увеличить население.
   growthPerDay: 1,
   foodPerCitizenPerDay: 0.5,
   starveDeathsPerShortageUnit: 0.2,
-  perHouseCapacity: 5,
+  residentsPerHouse: 1,
 };
 
 export const BALANCE = {
@@ -68,7 +68,6 @@ export const BALANCE = {
       faith: 50,
       knowledge: 10,
       population: 10,
-      maxPopulation: 10,
       happiness: HAPPINESS.start,
     },
     buildings: { houses: 1 },
@@ -98,7 +97,6 @@ export const BALANCE = {
   meters: {
     population: { name: 'Население', icon: '👥' },
     happiness:  { name: 'Счастье',   icon: '😊', min: HAPPINESS.min, max: HAPPINESS.max },
-    workers:    { name: 'Рабочие',   icon: '👷' },
   },
 
   happiness: HAPPINESS,
@@ -132,7 +130,7 @@ export const BALANCE = {
       produces: null,
       maintenance: 0.1,
       unlock: {},
-      onBuild: { maxPopulation: POPULATION.perHouseCapacity, happiness: HAPPINESS.perHouse },
+      onBuild: { residents: POPULATION.residentsPerHouse, happiness: HAPPINESS.perHouse },
     },
     farms: {
       name: 'Ферма', actionLabel: 'Построить ферму', icon: '🌾',
@@ -426,7 +424,8 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   chronicle: {
     storedEntries: 300,
-    renderedEntries: 60,
+    renderedEntries: 60,    // при развёрнутой панели
+    collapsedEntries: 2,    // свёрнуто: видны две последние записи
     kinds: {
       start:    { className: 'kind-start',    label: 'Начало' },
       build:    { className: 'kind-build',    label: 'Строительство' },

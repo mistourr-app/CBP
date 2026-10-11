@@ -84,9 +84,7 @@ try {
 
   check(Number.isFinite(data.resources.population), 'население конечно',
         String(data.resources.population));
-  check(data.resources.maxPopulation >= data.resources.population,
-        'лимит не ниже населения',
-        `${data.resources.population}/${data.resources.maxPopulation}`);
+  check(data.resources.maxPopulation === undefined, 'лимита населения больше нет');
   check(Object.values(data.buildings).every((v) => Number.isFinite(v) && v >= 0),
         'здания неотрицательны', JSON.stringify(data.buildings));
   check(Object.values(data.resources).every(Number.isFinite), 'ресурсы конечны');
@@ -114,8 +112,9 @@ try {
         `было 10, стало ${scenario.state.population}`);
   check(scenario.state.stats.citizensArrived > 0, 'прирост учтён в статистике',
         `${scenario.state.stats.citizensArrived} человек`);
-  check(scenario.state.maxPopulation === 15, 'дом добавил места для жителей',
-        `лимит ${scenario.state.maxPopulation}`);
+  // 10 жителей на старте, дом вселяет ещё одного, затем шесть дней прироста
+  check(scenario.state.population === 17, 'дом вселил жителя, рост продолжается',
+        `население ${scenario.state.population}`);
 
   const canvas = document.getElementById('stage');
   const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');

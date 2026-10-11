@@ -150,10 +150,9 @@ describe('обслуживание', () => {
 });
 
 describe('население', () => {
-  it('растёт, пока есть место в домах и хватает еды', () => {
+  it('растёт, пока хватает еды', () => {
     const { state } = makeSession();
-    setup(state, { resources: { food: 500, maxPopulation: 30 } });
-    state.setResource('maxPopulation', 30);
+    setup(state, { resources: { food: 500 } });
 
     const arrived = applyPopulationGrowth(state);
 
@@ -161,21 +160,21 @@ describe('население', () => {
     assert.equal(state.population, 11);
   });
 
-  it('не растёт выше лимита домов', () => {
+  it('не растёт при нехватке еды', () => {
     const { state } = makeSession();
-    setup(state, { resources: { food: 500 } });
-    state.setResource('maxPopulation', 10);
+    state.setResource('food', 1);
 
     assert.equal(applyPopulationGrowth(state), null);
     assert.equal(state.population, 10);
   });
 
-  it('не растёт при нехватке еды', () => {
+  it('лимита населения нет: рост не упирается в потолок', () => {
     const { state } = makeSession();
-    state.setResource('maxPopulation', 40);
-    state.setResource('food', 1);
+    setup(state, { resources: { food: 100000 } });
 
-    assert.equal(applyPopulationGrowth(state), null);
+    for (let i = 0; i < 50; i += 1) applyPopulationGrowth(state);
+
+    assert.ok(state.population > 50, `население упёрлось: ${state.population}`);
   });
 });
 

@@ -81,7 +81,6 @@ export class GameState {
 
   resource(key) { return this.data.resources[key] ?? 0; }
   get population() { return this.data.resources.population; }
-  get maxPopulation() { return this.data.resources.maxPopulation; }
   get happiness() { return this.data.resources.happiness; }
 
   buildingCount(key) { return this.data.buildings[key] ?? 0; }
@@ -127,14 +126,12 @@ export class GameState {
    * Приводит показатели к согласованному виду.
    *
    * События вроде осады вычитали жителей без нижней границы, из-за чего
-   * население уходило в минус, а лимит населения мог остаться выше
-   * фактического после разрушения домов. Вызывается в конце дня.
+   * население уходило в минус. Вызывается в конце дня.
    */
   normalize() {
     const r = this.data.resources;
 
     r.population = Math.max(0, Math.floor(r.population));
-    r.maxPopulation = Math.max(r.population, Math.floor(r.maxPopulation));
     r.happiness = Math.min(
       BALANCE.happiness.max,
       Math.max(BALANCE.happiness.min, r.happiness),
@@ -144,7 +141,7 @@ export class GameState {
       if (typeof value !== 'number' || Number.isNaN(value)) r[key] = 0;
     }
 
-    // Занятость не может превышать население, а население — лимит домов
+    // Занятость не может превышать население
     let excess = this.employedWorkers - r.population;
     if (excess > 0) {
       for (const key of [...WORKFORCE_BUILDINGS].reverse()) {

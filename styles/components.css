@@ -63,16 +63,24 @@
   white-space: nowrap;
 }
 
-/* --- Показатели (население, счастье, рабочие) ----------------------------- */
+/* --- Показатели --------------------------------------------------------- */
 
 .meters {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--sp-2);
 }
 
+/* Карточки показателей и ресурсов должны быть одной высоты, поэтому
+   высота задаётся явно, а содержимое центрируется внутри. */
+.meter,
+.res {
+  min-height: var(--card-h);
+}
+
 .meter {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
@@ -81,7 +89,6 @@
   border-radius: var(--r-md);
   backdrop-filter: blur(var(--blur));
   -webkit-backdrop-filter: blur(var(--blur));
-  min-width: 0;
 }
 
 .meter__icon {
@@ -107,10 +114,23 @@
   display: block;
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
 }
+
+/* Подпись под значением: «12 работают · 4 свободны» */
+.meter__sub {
+  display: block;
+  font-size: var(--fs-2xs);
+  line-height: 1.2;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meter--warn .meter__sub { color: var(--c-warning); }
 
 .meter--warn .meter__value { color: var(--c-warning); }
 .meter--danger .meter__value { color: var(--c-danger); }
@@ -118,6 +138,7 @@
 
 /* Тонкая полоса уровня счастья */
 .meter__bar {
+  display: block;
   height: 3px;
   margin-top: 3px;
   border-radius: var(--r-full);
@@ -126,6 +147,7 @@
 }
 
 .meter__fill {
+  display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--c-positive);
@@ -139,20 +161,21 @@
 
 .resources {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: var(--sp-2);
 }
 
 .res {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: var(--c-panel);
   border: 1px solid var(--c-panel-border);
   border-left: 3px solid var(--res-color, var(--c-bg-accent));
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   backdrop-filter: blur(var(--blur));
   -webkit-backdrop-filter: blur(var(--blur));
 }
@@ -165,7 +188,6 @@
 
 .res__body {
   min-width: 0;
-  flex: 1;
 }
 
 .res__value {
@@ -174,12 +196,13 @@
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-sm);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .res__name {
   display: block;
   font-size: var(--fs-2xs);
+  line-height: 1.2;
   color: var(--c-text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -187,7 +210,6 @@
 }
 
 .res__delta {
-  flex: none;
   font-family: var(--font-num);
   font-size: var(--fs-2xs);
   font-weight: 700;
@@ -205,6 +227,10 @@
 .chronicle-panel {
   display: flex;
   flex-direction: column;
+  /* Свёрнутая панель занимает ровно своё содержимое, развёрнутая —
+     тянется до свободного места и прокручивается внутри */
+  align-self: start;
+  max-height: 100%;
   min-height: 0;
   padding: var(--sp-3) var(--sp-4);
   background: var(--c-panel);
@@ -214,12 +240,55 @@
   -webkit-backdrop-filter: blur(var(--blur));
 }
 
+.chronicle-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+/* Кнопка раскрытия: маленькая, чтобы не спорить с лентой событий */
+.chronicle-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  color: var(--c-text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--c-panel-border);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.chronicle-toggle:hover {
+  color: var(--c-text);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.chronicle-toggle__arrow {
+  display: inline-block;
+  transition: transform var(--dur-base) var(--ease);
+}
+
+.chronicle-panel.is-open .chronicle-toggle__arrow {
+  transform: rotate(180deg);
+}
+
 .chronicle {
   list-style: none;
   margin-top: var(--sp-2);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Свёрнуто: видны только последние записи, лента не прокручивается */
+.chronicle-panel:not(.is-open) .chronicle {
+  overflow-y: hidden;
 }
 
 .chronicle__item {
@@ -361,9 +430,8 @@
 
 .choice:disabled .choice__cost { color: var(--c-text-faint); }
 
+/* «Подождать» занимает обычный слот, как и остальные действия */
 .choice--wait {
-  grid-column: 1 / -1;
-  min-height: 44px;
   background: linear-gradient(135deg, rgba(16, 23, 51, 0.85), rgba(12, 18, 42, 0.7));
   border-color: var(--c-panel-border);
 }

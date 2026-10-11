@@ -46,28 +46,42 @@ export class StatsPanel {
     this.#buildResources();
   }
 
+  /**
+   * Два показателя: население (с числом занятых) и счастье.
+   * Отдельно «население» и «рабочие» заводить не нужно: занятые всегда
+   * часть населения, поэтому и показываются вместе одной карточкой.
+   */
   #buildMeters() {
-    for (const [key, def] of Object.entries(BALANCE.meters)) {
-      const value = h('span', { class: 'meter__value' });
-      const label = h('span', { class: 'meter__label', text: def.name });
+    const value = h('span', { class: 'meter__value' });
+    const sub = h('span', { class: 'meter__sub' });
+    const label = h('span', { class: 'meter__label', text: 'Население' });
 
-      const body = h('div', { class: 'meter__body' });
-      body.append(label, value);
+    const body = h('div', { class: 'meter__body' });
+    body.append(label, value, sub);
 
-      let fill = null;
-      if (key === 'happiness') {
-        fill = h('span', { class: 'meter__fill' });
-        const bar = h('span', { class: 'meter__bar' });
-        bar.append(fill);
-        body.append(bar);
-      }
+    const people = h('div', { class: 'meter meter--population' });
+    people.append(h('span', { class: 'meter__icon', text: '👥' }), body);
 
-      const node = h('div', { class: `meter meter--${key}` });
-      node.append(h('span', { class: 'meter__icon', text: def.icon }), body);
+    this.meterNodes.set('population', { node: people, value, sub });
 
-      this.meterNodes.set(key, { node, value, fill });
-      this.metersRoot.append(node);
-    }
+    const happinessValue = h('span', { class: 'meter__value' });
+    const fill = h('span', { class: 'meter__fill' });
+    const bar = h('span', { class: 'meter__bar' });
+    bar.append(fill);
+
+    const happinessBody = h('div', { class: 'meter__body' });
+    happinessBody.append(
+      h('span', { class: 'meter__label', text: 'Счастье' }),
+      happinessValue,
+      bar,
+    );
+
+    const happiness = h('div', { class: 'meter meter--happiness' });
+    happiness.append(h('span', { class: 'meter__icon', text: '😊' }), happinessBody);
+
+    this.meterNodes.set('happiness', { node: happiness, value: happinessValue, fill });
+
+    this.metersRoot.append(people, happiness);
   }
 
   #buildResources() {
@@ -76,6 +90,7 @@ export class StatsPanel {
 
       const value = h('span', { class: 'res__value' });
       const delta = h('span', { class: 'res__delta' });
+
       const body = h('div', { class: 'res__body' });
       body.append(value, h('span', { class: 'res__name', text: def.name }));
 
@@ -105,42 +120,31 @@ export class StatsPanel {
 
   #updateMeters(state) {
     const employed = state.employedWorkers;
+    const free = state.freeWorkers;
 
-    for (const key of Object.keys(BALANCE.meters)) {
-      const { node, value, fill } = this.meterNodes.get(key);
+    const people = this.meterNodes.get('population');
+    people.value.textContent = formatNumber(state.population);
+    people.sub.textContent = employed > 0
+      ? `${formatNumber(employed)} работают · ${formatNumber(free)} свободны`
+      : 'никто не работает';
 
-      if (key === 'population') {
-        value.textContent = `${formatNumber(state.population)} / ${formatNumber(state.maxPopulation)}`;
-        node.classList.toggle('meter--warn', state.population >= state.maxPopulation);
-        continue;
-      }
+    // Простой без дела — повод об этом сказать
+    people.node.classList.toggle('meter--warn', free > 0 && employed > 0);
+    people.node.classList.toggle('meter--ok', employed > 0 || state.population <= 1);
 
-      if (key === 'workers') {
-        value.textContent = `${formatNumber(employed)} / ${formatNumber(state.population)}`;
-        node.classList.toggle(
-          'meter--warn',
-          state.freeWorkers > 0 && Object.values(state.buildings).some((count) => count > 0),
-        );
-        continue;
-      }
+    const happiness = this.meterNodes.get('happiness');
+    const percent = Math.round((state.happiness / BALANCE.happiness.max) * 100);
 
-      const percent = Math.round(
-        (state.happiness / BALANCE.happiness.max) * 100,
-      );
-      value.textContent = `${formatNumber(state.happiness)}%`;
+    happiness.value.textContent = `${formatNumber(state.happiness)}%`;
+    happiness.node.classList.toggle('meter--ok', state.happiness > HAPPINESS_WARN);
+    happiness.node.classList.toggle('meter--warn',
+      state.happiness <= HAPPINESS_WARN && state.happiness > HAPPINESS_DANGER);
+    happiness.node.classList.toggle('meter--danger', state.happiness <= HAPPINESS_DANGER);
 
-      node.classList.toggle('meter--ok', state.happiness > HAPPINESS_WARN);
-      node.classList.toggle('meter--warn',
-        state.happiness <= HAPPINESS_WARN && state.happiness > HAPPINESS_DANGER);
-      node.classList.toggle('meter--danger', state.happiness <= HAPPINESS_DANGER);
-
-      if (fill) {
-        fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-        fill.classList.toggle('meter__fill--warn',
-          state.happiness <= HAPPINESS_WARN && state.happiness > HAPPINESS_DANGER);
-        fill.classList.toggle('meter__fill--danger', state.happiness <= HAPPINESS_DANGER);
-      }
-    }
+    happiness.fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    happiness.fill.classList.toggle('meter__fill--warn',
+      state.happiness <= HAPPINESS_WARN && state.happiness > HAPPINESS_DANGER);
+    happiness.fill.classList.toggle('meter__fill--danger', state.happiness <= HAPPINESS_DANGER);
   }
 
   #updateResources(state, daily) {

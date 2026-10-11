@@ -9,16 +9,43 @@ import { BALANCE } from '../balance.js';
 import { el, h } from './dom.js';
 
 const MAX_NODES = BALANCE.chronicle.renderedEntries;
+const COLLAPSED_NODES = BALANCE.chronicle.collapsedEntries;
 
 export class ChroniclePanel {
   constructor(session) {
     this.session = session;
+    this.panel = document.querySelector('.chronicle-panel');
     this.list = el('#chronicle');
+    this.toggle = el('#chronicle-toggle');
+    this.toggleLabel = el('#chronicle-toggle-label');
+
+    this.expanded = false;
     this.renderedCount = 0;
+
+    this.toggle.addEventListener('click', () => this.setExpanded(!this.expanded));
+    this.setExpanded(false);
+  }
+
+  setExpanded(expanded) {
+    if (this.expanded === expanded && this.renderedCount > 0) return;
+
+    this.expanded = expanded;
+    this.panel.classList.toggle('is-open', expanded);
+    this.toggle.setAttribute('aria-expanded', String(expanded));
+    this.toggleLabel.textContent = expanded ? 'Свернуть' : 'Вся хроника';
+
+    // Перерисовка обязательна: свёрнуто в списке две записи,
+    // а раскрыто — вся лента. Без этого лента осталась бы короткой.
+    this.render();
+  }
+
+  /** Сколько записей показывать в текущем режиме. */
+  get limit() {
+    return this.expanded ? MAX_NODES : COLLAPSED_NODES;
   }
 
   render() {
-    const entries = this.session.chronicle.forDisplay(MAX_NODES);
+    const entries = this.session.chronicle.forDisplay(this.limit);
     const list = this.list;
 
     // Убрать лишние узлы с конца

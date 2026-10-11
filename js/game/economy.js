@@ -155,8 +155,9 @@ export function applyProduction(state) {
  *
  * В прототипе прироста не было вовсе — жители только убывали, поэтому
  * условие победы «население >= 100» было недостижимо и игра была
- * непроходима. Теперь новые жители вселяются в построенные дома
- * (maxPopulation растёт только при постройке домов) и только пока хватает еды.
+ * непроходима. Теперь, пока хватает еды, каждый день прибывает один
+ * житель. Лимита нет: застройка домов увеличивает население напрямую,
+ * а не открывает места в жёсткой ёмкости.
  */
 export function applyPopulationGrowth(state) {
   const { growthPerDay, foodPerCitizenPerDay } = BALANCE.population;
@@ -164,7 +165,6 @@ export function applyPopulationGrowth(state) {
 
   let arrived = 0;
   for (let i = 0; i < growthPerDay; i += 1) {
-    if (state.population >= state.maxPopulation) break;
     const needForNext = foodPerCitizenPerDay * (state.population + 1);
     if (state.resource('food') < needForNext) break;
 

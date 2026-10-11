@@ -52,7 +52,10 @@ body.no-webgl #bg-canvas {
   inset: 0;
   z-index: 1;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* Пять секций: шапка, показатели, ресурсы, хроника, выборы.
+     Растягивается только хроника — у неё своя прокрутка, остальным
+     высота по содержимому. */
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   gap: var(--sp-3);
   padding:
     calc(var(--sp-3) + var(--safe-top))

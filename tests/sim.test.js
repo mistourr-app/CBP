@@ -77,10 +77,6 @@ describe('длинная партия', () => {
       // Показатели согласованы между собой
       assert.ok(data.resources.population >= 0, 'население отрицательное');
       assert.ok(
-        data.resources.population <= data.resources.maxPopulation,
-        `население ${data.resources.population} выше лимита ${data.resources.maxPopulation}`,
-      );
-      assert.ok(
         session.state.employedWorkers <= data.resources.population,
         'занятых рабочих больше, чем жителей',
       );

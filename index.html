@@ -41,7 +41,13 @@
     <section class="resources" id="resources" aria-label="Ресурсы"></section>
 
     <section class="chronicle-panel">
-      <h2 class="panel__title">Хроника</h2>
+      <div class="chronicle-panel__head">
+        <h2 class="panel__title">Хроника</h2>
+        <button type="button" class="chronicle-toggle" id="chronicle-toggle" aria-expanded="false" aria-controls="chronicle">
+          <span id="chronicle-toggle-label">Вся хроника</span>
+          <span class="chronicle-toggle__arrow" aria-hidden="true">▾</span>
+        </button>
+      </div>
       <ol class="chronicle" id="chronicle" aria-live="polite" aria-relevant="additions"></ol>
     </section>
 

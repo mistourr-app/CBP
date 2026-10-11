@@ -158,14 +158,18 @@ export class Engine {
     if (def.onBuild?.happiness) {
       this.state.addResource('happiness', def.onBuild.happiness);
     }
-    if (def.onBuild?.maxPopulation) {
-      this.state.addResource('maxPopulation', def.onBuild.maxPopulation);
+
+    // Дом вселяет жителя сразу: застройка и есть способ увеличить население
+    let residents = 0;
+    if (def.onBuild?.residents) {
+      residents = def.onBuild.residents;
+      this.state.addResource('population', residents);
+      this.state.stats.citizensArrived += residents;
     }
+
     this.state.clampHappiness();
 
-    const extra = def.onBuild?.maxPopulation
-      ? ` (+${def.onBuild.maxPopulation} мест для жителей)`
-      : '';
+    const extra = residents ? ` (+${residents} житель)` : '';
 
     return {
       ok: true,
