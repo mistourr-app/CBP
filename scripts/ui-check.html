@@ -94,15 +94,19 @@ try {
   check(Math.abs(slackBottom) < 24, 'выборы прижаты к низу экрана',
         `${Math.round(slackBottom)}px снизу`);
 
-  // Свободное место должно быть в середине — там виден город.
-  // Сверху и снизу его быть не должно.
+  // Свободное место должно быть между ресурсами и хроникой — там виден
+  // город. Между хроникой и выборами зазора быть не должно: это нижняя
+  // часть экрана, она прижата к краю целиком.
   const topGap = bar.top - top.top;
   const bottomGap = frame.contentWindow.innerHeight - choiceBox.bottom;
-  const middleGap = choiceBox.top - chronBox.bottom;
+  const cityGap = chronBox.top - resBox.bottom;
+  const innerGap = choiceBox.top - chronBox.bottom;
 
   check(topGap < 16, 'сверху нет пустоты', `${Math.round(topGap)}px`);
   check(bottomGap < 24, 'снизу нет пустоты', `${Math.round(bottomGap)}px`);
-  check(middleGap >= 0, 'свободное место посередине', `${Math.round(middleGap)}px`);
+  check(innerGap < 16, 'хроника и выборы стоят впритык', `${Math.round(innerGap)}px`);
+  check(cityGap >= innerGap, 'свободное место выше хроники',
+        `под ресурсами ${Math.round(cityGap)}px, между хроникой и выборами ${Math.round(innerGap)}px`);
 
   // -- Порядок действий ---------------------------------------------------
   const buttons = [...doc.querySelectorAll('.choice')].filter((n) => !n.hidden);

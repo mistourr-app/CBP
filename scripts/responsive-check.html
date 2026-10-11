@@ -88,15 +88,20 @@ for (const size of WIDTHS) {
   check(choiceClipped.length === 0, `${size.w}px: подписи действий помещаются`,
         `обрезано: ${choiceClipped.length}`);
 
-  // Хроника над выборами, выборы внизу
+  // Хроника и выборы внизу впритык, свободное место — над хроникой
   const order = [...doc.querySelectorAll('#ui-overlay > *')].map((n) => n.className.split(' ')[0]);
   check(order.indexOf('chronicle-panel') < order.indexOf('choices-panel'),
         `${size.w}px: хроника над выборами`, order.join(' → '));
 
-  // Секции не наезжают друг на друга
   const choices = doc.querySelector('.choices-panel').getBoundingClientRect();
   const chronicle = doc.querySelector('.chronicle-panel').getBoundingClientRect();
+  const resourcesBox = doc.querySelector('.resources').getBoundingClientRect();
+  const inner = choices.top - chronicle.bottom;
+
   check(chronicle.bottom <= choices.top + 1, `${size.w}px: хроника не наезжает на выборы`);
+  check(inner < 16, `${size.w}px: хроника и выборы впритык`, `${Math.round(inner)}px`);
+  check(chronicle.top >= resourcesBox.bottom - 1,
+        `${size.w}px: хроника ниже ресурсов`);
 
   // Выборы прижаты к низу и ничего не обрезано
   const viewport = win.innerHeight;
