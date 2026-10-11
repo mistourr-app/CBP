@@ -72,5 +72,6 @@ export const COLOR = {
   waterDeep: 0x1d4a75,
   stone: 0x8d94a5,
   road: 0x39404f,
+  plaza: 0x6b7280,
   soil: 0x5a4530,
 };

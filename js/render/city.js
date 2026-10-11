@@ -18,8 +18,74 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { BUILDING_KEYS } from '../balance.js';
 import { COLOR } from './palette.js';
 
-const CELL = 9;
+// ---------------------------------------------------------------------------
+// Тайловая структура города
+//
+// Город разбит на квадратные участки (клетки). Дороги идут по границам
+// клеток, а не по их центрам, поэтому здание физически не может встать на
+// дорогу: участок уже отделён от проезжей части.
+//
+//     участок      дорога      участок      дорога      участок
+//   [      ]      [   ]      [      ]      [   ]      [      ]
+//        центр клетки приходится на середину промежутка
+//
+// В прототипе дороги шли крестом через центр, а клетки стояли в начале
+// координат. Здания центральной строки и столбца — а это всегда первая
+// постройка — оказывались прямо на дороге.
+//
+// Размеры считаются из настоящей геометрии, а не задаются числом: если
+// кто-то сделает здание шире промежутка, это обнаружит тест, а не игрок.
+// ---------------------------------------------------------------------------
+
+/** Проектная сторона участка под здание. */
+const PLOT = 6.4;
+
+/** Минимально приемлемая ширина проезжей части. */
+const MIN_ROAD = 4;
+
 const MAX_RING = 22;
+
+/**
+ * Описания зданий. Объявляются до расчёта габаритов: размеры клетки
+ * выводятся из настоящей геометрии, а не задаются числом. Если кто-то
+ * сделает здание шире промежутка между дорогами, это обнаружит тест,
+ * а не игрок.
+ */
+const MODELS = defineModels();
+
+/** Наибольший габарит здания по ширине и глубине, считается из геометрии. */
+export const MAX_FOOTPRINT = measureMaxFootprint();
+
+/** Сторона клетки: участок плюс дорога, округлённая вверх. */
+export const CELL = Math.ceil(MAX_FOOTPRINT + MIN_ROAD);
+
+/** Ширина проезжей части: промежуток между соседними участками. */
+export const ROAD_WIDTH = CELL - MAX_FOOTPRINT;
+
+/** Дороги идут по границам клеток: координата (k + 0.5) * CELL. */
+export const ROAD_OFFSET = CELL / 2;
+
+/**
+ * Список дорог для города радиусом в клетках.
+ *
+ * axis — вдоль какой оси тянется полоса:
+ *   'z' — дорога идёт вдоль оси z (вертикальная на виде сверху),
+ *   'x' — вдоль оси x (горизонтальная).
+ */
+export function roadsFor(rings) {
+  const span = (rings + 2) * CELL;
+  const half = ROAD_WIDTH / 2;
+  const roads = [];
+
+  for (let k = -rings - 1; k <= rings + 1; k += 1) {
+    const offset = (k + 0.5) * CELL;
+
+    roads.push({ axis: 'z', x: offset, z: 0, width: ROAD_WIDTH, length: span, half });
+    roads.push({ axis: 'x', x: 0, z: offset, width: ROAD_WIDTH, length: span, half });
+  }
+
+  return roads;
+}
 
 /**
  * Спиральная развёртка клеток от центра наружу.
@@ -103,7 +169,7 @@ function defineModels() {
     houses: {
       parts: [
         box(4.4, 3.2, 4.4, 0xa8703f),
-        { geometry: new THREE.ConeGeometry(3.9, 2.4, 4), color: 0x7a3f2a, offsetY: 4.4 },
+        { geometry: new THREE.ConeGeometry(3.2, 2.4, 4), color: 0x7a3f2a, offsetY: 4.4 },
         { ...box(1.5, 0.9, 0.12, 0xffdca0, 2.0), window: true },
         { ...box(0.12, 0.9, 1.5, 0xffdca0, 2.0), window: true },
       ],
@@ -111,14 +177,14 @@ function defineModels() {
     farms: {
       parts: [
         box(5.4, 2.6, 4.0, 0x8d5a33),
-        { geometry: new THREE.ConeGeometry(3.9, 1.8, 4), color: 0x5d3a22, offsetY: 3.5 },
-        box(6.6, 0.14, 5.2, 0x6f8f3a, 0.07), // поле
+        { geometry: new THREE.ConeGeometry(3.2, 1.8, 4), color: 0x5d3a22, offsetY: 3.5 },
+        box(6.2, 0.14, 5.0, 0x6f8f3a, 0.07), // поле
       ],
     },
     lumberMills: {
       parts: [
         box(5.0, 2.4, 3.8, 0x7d5a38),
-        { geometry: new THREE.ConeGeometry(3.6, 1.8, 4), color: 0x4a3524, offsetY: 3.3 },
+        { geometry: new THREE.ConeGeometry(2.9, 1.8, 4), color: 0x4a3524, offsetY: 3.3 },
         { ...box(0.2, 2.4, 0.2, 0x8b5e3c, 1.2), rotation: [0, 0, 0.35] },
         { ...box(0.2, 2.4, 0.2, 0x8b5e3c, 1.2), rotation: [0, 0, -0.35] },
       ],
@@ -133,7 +199,7 @@ function defineModels() {
     markets: {
       parts: [
         box(6.0, 3.0, 4.6, 0xb5794a),
-        { geometry: new THREE.BoxGeometry(6.6, 0.22, 5.2), color: 0x8f4d33, offsetY: 3.5 },
+        { geometry: new THREE.BoxGeometry(6.2, 0.22, 5.0), color: 0x8f4d33, offsetY: 3.5 },
         { ...box(1.2, 1.8, 0.12, 0xffdca0, 1.5), window: true },
       ],
     },
@@ -152,8 +218,10 @@ function defineModels() {
       ],
     },
     walls: {
+      // Стена не должна вылезать на проезжую часть, поэтому её ширина
+      // задаётся от габарита участка, а не от размера клетки
       parts: [
-        { geometry: new THREE.BoxGeometry(CELL + 0.6, 3.0, 1.4), color: 0x8a8f9c },
+        { geometry: new THREE.BoxGeometry(PLOT * 0.9, 3.0, 1.2), color: 0x8a8f9c },
       ],
     },
     towers: {
@@ -175,7 +243,7 @@ export class CityView {
     this.root = new THREE.Group();
     this.world.add(this.root);
 
-    this.models = defineModels();
+    this.models = MODELS;
     this.meshes = new Map();
     this.windowMeshes = new Map();
     this.layout = new CityLayout();
@@ -359,11 +427,14 @@ export class CityView {
   }
 
   /**
-   * Дороги: крест в центре города.
+   * Дороги: сетка по границам клеток плюс площадь в центре.
    *
-   * Дорога пересобирается вместе с застройкой, поэтому её ресурсы
+   * Все полосы склеиваются в одну геометрию: при большом городе это сотни
+   * полос, и отдельный вызов отрисовки на каждую был бы лишним.
+   *
+   * Дороги пересобираются вместе с застройкой, поэтому их ресурсы
    * освобождаются здесь же — иначе каждый ход оставлял бы в видеокарте
-   * новую геометрию и материал.
+   * новую геометрию.
    */
   #rebuildRoads() {
     this.#disposeRoads();
@@ -371,40 +442,54 @@ export class CityView {
     this.radius = this.layout.radius();
     if (!Number.isFinite(this.radius)) return;
 
-    const geometry = new THREE.BoxGeometry(this.radius * 2 + CELL * 3, 0.08, CELL * 0.62);
+    const rings = Math.ceil(this.radius / CELL);
+    const geometry = buildRoadGeometry(roadsFor(rings));
+
     const material = new THREE.MeshStandardMaterial({
       color: COLOR.road, roughness: 0.95, metalness: 0,
     });
 
-    const cross = new THREE.Group();
+    this.roadMesh = new THREE.Mesh(geometry, material);
+    this.roadMesh.position.y = 0.02;
+    this.roadMesh.receiveShadow = true;
 
-    const horizontal = new THREE.Mesh(geometry, material);
-    horizontal.position.y = 0.02;
-    horizontal.receiveShadow = true;
-    cross.add(horizontal);
+    this.root.add(this.roadMesh);
 
-    const vertical = new THREE.Mesh(geometry, material);
-    vertical.rotation.y = Math.PI / 2;
-    vertical.position.y = 0.02;
-    vertical.receiveShadow = true;
-    cross.add(vertical);
+    this.#addCentralPlaza();
+  }
 
-    this.roadMesh = cross;
-    this.root.add(cross);
+  /**
+   * Площадь в центре города.
+   *
+   * Без неё перекрёсток в центре выглядит пусто. Круглая площадь шире
+   * дороги и служит视觉 ориентиром при первом запуске.
+   */
+  #addCentralPlaza() {
+    const radius = CELL * 0.52;
+    const geometry = new THREE.CircleGeometry(radius, 24);
+    geometry.rotateX(-Math.PI / 2);
+
+    const material = new THREE.MeshStandardMaterial({
+      color: COLOR.plaza, roughness: 0.9, metalness: 0,
+    });
+
+    this.plazaMesh = new THREE.Mesh(geometry, material);
+    this.plazaMesh.position.y = 0.03;
+    this.plazaMesh.receiveShadow = true;
+
+    this.root.add(this.plazaMesh);
   }
 
   #disposeRoads() {
-    if (!this.roadMesh) return;
+    for (const key of ['roadMesh', 'plazaMesh']) {
+      const node = this[key];
+      if (!node) continue;
 
-    this.root.remove(this.roadMesh);
-
-    // Геометрия и материал общие для двух балок, поэтому освобождаем один раз
-    this.roadMesh.traverse((node) => {
-      if (node.geometry) node.geometry.dispose();
-      if (node.material) node.material.dispose();
-    });
-
-    this.roadMesh = null;
+      this.root.remove(node);
+      node.geometry.dispose();
+      node.material.dispose();
+      this[key] = null;
+    }
   }
 
   /** Окна загораются ночью. */
@@ -419,6 +504,53 @@ export class CityView {
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
   }
+}
+
+/**
+ * Склеивает полосы дорог в одну геометрию.
+ *
+ * Каждая полоса — четыре вершины и два треугольника. При сотне полос это
+ * по-прежнему один вызов отрисовки вместо сотни.
+ */
+function buildRoadGeometry(roads) {
+  const positions = [];
+  const normals = [];
+  const indices = [];
+  let offset = 0;
+
+  for (const road of roads) {
+    const alongZ = road.axis === 'z';
+    const halfWidth = road.width / 2;
+    const halfLength = road.length / 2;
+
+    // Смещение поперёк полосы и вдоль неё
+    const across = alongZ ? { x: halfWidth, z: 0 } : { x: 0, z: halfWidth };
+    const along = alongZ ? { x: 0, z: halfLength } : { x: halfLength, z: 0 };
+    const cx = alongZ ? road.x : 0;
+    const cz = alongZ ? 0 : road.z;
+
+    const corners = [
+      { x: cx - across.x - along.x, z: cz - across.z - along.z },
+      { x: cx + across.x - along.x, z: cz + across.z - along.z },
+      { x: cx + across.x + along.x, z: cz + across.z + along.z },
+      { x: cx - across.x + along.x, z: cz - across.z + along.z },
+    ];
+
+    for (const corner of corners) {
+      positions.push(corner.x, 0, corner.z);
+      normals.push(0, 1, 0);
+    }
+
+    indices.push(offset, offset + 2, offset + 1, offset, offset + 3, offset + 2);
+    offset += 4;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 /**
@@ -489,4 +621,23 @@ function hash(...parts) {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-export { CELL };
+/**
+ * Наибольший габарит здания: измеряется по склеенной геометрии каждого
+ * типа. Определения функций hoisting'ом доступны выше по файлу.
+ */
+function measureMaxFootprint() {
+  let max = 0;
+
+  for (const model of Object.values(MODELS)) {
+    const solid = model.parts.filter((part) => !part.window);
+    const geometry = mergeGeometries(solid);
+
+    geometry.computeBoundingBox();
+    const size = geometry.boundingBox.getSize(new THREE.Vector3());
+    max = Math.max(max, size.x, size.z);
+
+    geometry.dispose();
+  }
+
+  return max;
+}
