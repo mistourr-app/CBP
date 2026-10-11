@@ -97,7 +97,8 @@ export class ChoicesPanel {
     }
 
     if (choice.workers > 0) {
-      nodes.push(figure(BALANCE.workers.icon, String(choice.workers), 'neutral'));
+      // Рабочие берутся из общего населения, поэтому расход — красным
+      nodes.push(figure(BALANCE.workers.icon, String(choice.workers), 'cost'));
     }
 
     if (choice.chance != null) {
