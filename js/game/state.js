@@ -6,8 +6,11 @@
 // ============================================================================
 
 import { BALANCE, BUILDING_KEYS, WORKFORCE_BUILDINGS } from '../balance.js';
+import { isOperating } from './economy.js';
 
 const SCHEMA = BALANCE.meta.schema;
+const TIER_MIN = 1;
+const TIER_MAX = BALANCE.development.levels.length;
 
 function emptyBuildings() {
   return Object.fromEntries(BUILDING_KEYS.map((key) => [key, 0]));
@@ -19,6 +22,10 @@ function emptyWorkers() {
 
 function emptyTechnologies() {
   return Object.fromEntries(Object.keys(BALANCE.technologies).map((key) => [key, false]));
+}
+
+function startResources() {
+  return Object.fromEntries(Object.keys(BALANCE.resources).map((key) => [key, 0]));
 }
 
 function clamp(value, min, max) {
@@ -51,15 +58,15 @@ function normalizeState(data) {
     if (typeof value !== 'number' || Number.isNaN(value)) r[key] = 0;
   }
 
-  // Занятость не может превышать население
-  let employed = 0;
-  for (const key of WORKFORCE_BUILDINGS) employed += r[key] ?? 0;
-  employed = Math.max(employed, 0);
+  data.tier = clamp(Math.floor(data.tier ?? TIER_MIN), TIER_MIN, TIER_MAX);
 
+  // Рабочие стоят только на действующих зданиях: прошлые уровни освобождаются
   for (const key of WORKFORCE_BUILDINGS) {
-    data.workers[key] = Math.max(0, data.workers[key] ?? 0);
+    const active = isOperating(BALANCE.buildings[key], data.tier);
+    data.workers[key] = active ? Math.max(0, data.workers[key] ?? 0) : 0;
   }
 
+  // Занятость не может превышать население
   let excess = 0;
   for (const key of WORKFORCE_BUILDINGS) excess += data.workers[key];
   excess -= r.population;
@@ -75,10 +82,6 @@ function normalizeState(data) {
   return data;
 }
 
-function startResources() {
-  return { gold: 0, food: 0, wood: 0, stone: 0, faith: 0, knowledge: 0 };
-}
-
 export function createInitialState() {
   const resources = { ...startResources(), ...BALANCE.start.resources };
 
@@ -89,6 +92,9 @@ export function createInitialState() {
     day: BALANCE.start.day,
     year: BALANCE.start.year,
     seasonIndex: BALANCE.start.seasonIndex,
+
+    /** Уровень поселения: 1 — Поселение … 5 — Большой город. */
+    tier: BALANCE.start.tier,
 
     resources,
     buildings: { ...emptyBuildings(), ...BALANCE.start.buildings },
@@ -138,6 +144,10 @@ export class GameState {
   get workers() { return this.data.workers; }
   get technologies() { return this.data.technologies; }
   get stats() { return this.data.stats; }
+  get tier() { return this.data.tier; }
+
+  /** Описание текущего уровня поселения из balance. */
+  get tierDef() { return BALANCE.development.levels[this.data.tier - 1]; }
 
   resource(key) { return this.data.resources[key] ?? 0; }
   get population() { return this.data.resources.population; }
@@ -158,11 +168,6 @@ export class GameState {
     return clampHappiness(this.data.happiness);
   }
 
-  /** Множитель производства от настроения народа. */
-  get productionMultiplier() {
-    return BALANCE.happiness.prodMult[String(this.happinessLevel)] ?? 1;
-  }
-
   buildingCount(key) { return this.data.buildings[key] ?? 0; }
   workerCount(key) { return this.data.workers[key] ?? 0; }
   hasTechnology(key) { return Boolean(this.data.technologies[key]); }
@@ -177,9 +182,11 @@ export class GameState {
     return Math.max(0, this.population - this.employedWorkers);
   }
 
+  /** Ёмкость рабочих: только у зданий, которые работают на текущем уровне. */
   workerCapacity(key) {
     const def = BALANCE.buildings[key];
     if (!def?.workers) return 0;
+    if (!isOperating(def, this.tier)) return 0;
     return this.buildingCount(key) * def.workers;
   }
 
@@ -240,23 +247,11 @@ export class GameState {
     state.endReason = typeof raw.endReason === 'string' ? raw.endReason : '';
     state.endIcon = typeof raw.endIcon === 'string' ? raw.endIcon : '';
 
+    state.tier = Number.isInteger(raw.tier) ? raw.tier : state.tier;
     state.happiness = Number.isFinite(raw.happiness) ? raw.happiness : state.happiness;
     state.taxRateIndex = Number.isFinite(raw.taxRateIndex)
       ? raw.taxRateIndex
       : state.taxRateIndex;
-
-    // Согласованность: занятость не может превышать население
-    for (const key of WORKFORCE_BUILDINGS) {
-      state.workers[key] = Math.max(0, state.workers[key] ?? 0);
-    }
-    const employed = WORKFORCE_BUILDINGS.reduce((sum, key) => sum + state.workers[key], 0);
-    let excess = employed - state.resources.population;
-    for (const key of WORKFORCE_BUILDINGS) {
-      if (excess <= 0) break;
-      const take = Math.min(excess, state.workers[key]);
-      state.workers[key] -= take;
-      excess -= take;
-    }
 
     // Нормализация живёт на экземпляре, поэтому применяем её уже после
     // создания: на этапе восстановления ещё нет метода normalize

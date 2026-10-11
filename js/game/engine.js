@@ -25,7 +25,10 @@ import {
   autoAssignWorkers,
   canAfford,
   computeHappiness,
+  costOf,
+  currentFoodKey,
   spend,
+  visibleResources,
 } from './economy.js';
 import { rollDailyEvent } from './events.js';
 import { Chronicle } from './chronicle.js';
@@ -59,13 +62,28 @@ export class Engine {
 
     for (const [key, def] of Object.entries(BALANCE.buildings)) {
       if (!this.isBuildingUnlocked(key)) continue;
+      const cost = costOf(def, state.tier);
       out.push({
         id: `build:${key}`,
         group: 'build',
         label: def.actionLabel ?? `Построить: ${def.name.toLowerCase()}`,
         icon: def.icon,
-        cost: def.cost,
-        affordable: canAfford(state, def.cost),
+        cost,
+        affordable: canAfford(state, cost),
+      });
+    }
+
+    // Переход на следующий уровень: списывается требование уровня
+    const tierDef = state.tierDef;
+    if (tierDef?.requirements) {
+      out.push({
+        id: 'tier:up',
+        group: 'tier',
+        label: BALANCE.choices.actions.tierUp.label,
+        icon: BALANCE.choices.actions.tierUp.icon,
+        cost: tierDef.requirements,
+        affordable: canAfford(state, tierDef.requirements),
+        detail: `${tierDef.nextName}`,
       });
     }
 
@@ -85,7 +103,7 @@ export class Engine {
     }
 
     const { trade, expedition } = BALANCE.economy;
-    const tradeCost = { food: trade.foodCost };
+    const tradeCost = { [currentFoodKey(state)]: trade.foodCost };
     out.push({
       id: 'trade',
       group: 'trade',
@@ -130,14 +148,18 @@ export class Engine {
     return state.day % BALANCE.taxChangeEveryDays === 0;
   }
 
+  /**
+   * Здание можно выбрать сейчас: оно строится на текущем уровне поселения
+   * и, если нужны рабочие, есть свободные жители.
+   * Требований «другое здание» у зданий нет.
+   */
   isBuildingUnlocked(key) {
-    const unlock = BALANCE.buildings[key].unlock || {};
+    const def = BALANCE.buildings[key];
     const state = this.state;
 
-    for (const [buildingKey, count] of Object.entries(unlock.buildings ?? {})) {
-      if (state.buildingCount(buildingKey) < count) return false;
-    }
+    if (!def.levels?.includes(state.tier)) return false;
 
+    const unlock = def.unlock || {};
     if (unlock.freeWorkers != null && state.freeWorkers < unlock.freeWorkers) return false;
 
     return true;
@@ -160,6 +182,8 @@ export class Engine {
         return this.#expedition();
       case 'tax':
         return this.#changeTax();
+      case 'tier:up':
+        return this.#tierUp();
       default:
         break;
     }
@@ -205,14 +229,10 @@ export class Engine {
     const def = BALANCE.buildings[key];
     if (!def) return { ok: false, note: null };
     if (!this.isBuildingUnlocked(key)) return { ok: false, note: null };
-    if (!spend(this.state, def.cost)) return { ok: false, note: null };
+    if (!spend(this.state, costOf(def, this.state.tier))) return { ok: false, note: null };
 
     this.state.addBuilding(key, 1);
     this.state.stats.buildingsBuilt += 1;
-
-    if (def.onBuild?.happiness) {
-      this.state.addResource('happiness', def.onBuild.happiness);
-    }
 
     // Дом вселяет жителя сразу: застройка и есть способ увеличить население
     let residents = 0;
@@ -229,6 +249,28 @@ export class Engine {
     return {
       ok: true,
       note: { kind: 'build', icon: def.icon, text: `Построено: ${def.name}${extra}` },
+    };
+  }
+
+  /**
+   * Переход на следующий уровень поселения.
+   * Требования уровня списываются, рабочие прошлых зданий освобождаются
+   * (normalize), эффекты социальных зданий сохраняются.
+   */
+  #tierUp() {
+    const requirements = this.state.tierDef?.requirements;
+    if (!requirements) return { ok: false, note: null };
+    if (!spend(this.state, requirements)) return { ok: false, note: null };
+
+    this.state.data.tier += 1;
+    this.state.normalize();
+
+    const tier = this.state.tierDef;
+    this.state.stats.tiersReached = (this.state.stats.tiersReached ?? 0) + 1;
+
+    return {
+      ok: true,
+      note: { kind: 'research', icon: tier.icon, text: `Поселение выросло: ${tier.name}` },
     };
   }
 
@@ -250,7 +292,8 @@ export class Engine {
 
   #trade() {
     const { foodCost, goldGain } = BALANCE.economy.trade;
-    if (!spend(this.state, { food: foodCost })) return { ok: false, note: null };
+    const foodKey = currentFoodKey(this.state);
+    if (!spend(this.state, { [foodKey]: foodCost })) return { ok: false, note: null };
 
     this.state.addResource('gold', goldGain);
     this.state.stats.tradesCompleted += 1;
@@ -262,7 +305,7 @@ export class Engine {
   }
 
   #expedition() {
-    const { cost, baseSuccessChance, knowledgeBonusPerHundred, rewards, failureLoss } =
+    const { cost, baseSuccessChance, knowledgeBonusPerHundred, goldReward, materialReward, failureLoss } =
       BALANCE.economy.expedition;
 
     if (!spend(this.state, { gold: cost })) return { ok: false, note: null };
@@ -275,16 +318,24 @@ export class Engine {
     );
 
     if (this.rng.chance(chance)) {
-      const reward = this.rng.pickWeighted(rewards);
-      const amount = this.rng.int(reward.min, reward.max);
-      this.state.addResource(reward.resource, amount);
+      // Награда: золото либо материал текущего уровня (прошлые не нужны)
+      const materials = visibleResources(this.state)
+        .filter((key) => BALANCE.resources[key].tier === this.state.tier);
+      const pickGold = materials.length === 0 || this.rng.chance(
+        goldReward.weight / (goldReward.weight + materialReward.weight),
+      );
+
+      const resource = pickGold ? 'gold' : this.rng.pick(materials);
+      const range = pickGold ? goldReward : materialReward;
+      const amount = this.rng.int(range.min, range.max);
+      this.state.addResource(resource, amount);
 
       return {
         ok: true,
         note: {
           kind: 'trade',
           icon: '🗺️',
-          text: `Экспедиция удалась: +${formatResource(amount, BALANCE.resources[reward.resource].unit)}`,
+          text: `Экспедиция удалась: +${formatResource(amount, BALANCE.resources[resource].unit)}`,
         },
       };
     }
@@ -390,11 +441,10 @@ export class Engine {
     }
 
     // Победа проверяется последней и потому имеет приоритет
+    // Временно: победа — достижение последнего уровня. Итоговый проект
+    // (подэтап 2.5) заменит это условие.
     const victory = BALANCE.endConditions.victory;
-    const buildingsMet = Object.entries(victory.buildings).every(
-      ([key, count]) => state.buildingCount(key) >= count,
-    );
-    if (state.population >= victory.populationMin && buildingsMet) {
+    if (state.population >= victory.populationMin && state.tier >= victory.tierMin) {
       outcome = { status: 'won', reason: victory.reason, icon: victory.icon };
     }
 
@@ -421,8 +471,8 @@ export class Engine {
       populationMin: () => state.population >= when.populationMin,
       happinessMax:  () => state.happiness <= when.happinessMax,
       happinessMin:  () => state.happiness >= when.happinessMin,
-      foodMax:       () => state.resource('food') <= when.foodMax,
-      foodMin:       () => state.resource('food') >= when.foodMin,
+      foodMax:       () => state.resource(currentFoodKey(state)) <= when.foodMax,
+      foodMin:       () => state.resource(currentFoodKey(state)) >= when.foodMin,
       goldMax:       () => state.resource('gold') <= when.goldMax,
     };
 

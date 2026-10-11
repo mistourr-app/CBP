@@ -270,6 +270,9 @@
 .res--ready .res__goal { color: var(--c-success); }
 .res--ready .res__bar-fill { background: var(--c-success); }
 
+/* Ресурсы прошлых уровней скрыты; атрибут hidden должен побеждать display: flex */
+.res[hidden] { display: none; }
+
 .res__delta {
   display: block;
   font-family: var(--font-num);

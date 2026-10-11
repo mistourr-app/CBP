@@ -5,46 +5,37 @@
 // и js/ui/**. Всё берётся отсюда. Это позволяет балансировать игру правкой
 // одного файла и прогонять симуляции (см. SYSTEMS_SPEC.md §7).
 //
-// Структура разделов соответствует разделам SYSTEMS_SPEC.md, чтобы этап 2
-// мог наполнять существующие места, не переписывая код.
+// Единицы: все эффекты заданы штуками, днями и уровнями. Проценты не
+// используются нигде, кроме отображения ставки налога.
+//
+// Правила зданий (SYSTEMS_SPEC.md §4, §6):
+//   * здание не требует другого здания;
+//   * производственное здание даёт один ресурс и работает только на своём
+//     уровне поселения; на других уровнях оно не учитывается;
+//   * социальное здание даёт эффект, который действует на всех уровнях,
+//     если здание построено; строится только на своём уровне;
+//   * эффекты одного типа суммируются.
 // ============================================================================
 
-// Вспомогательные разделы вынесены отдельно, чтобы значения не дублировались:
-// например, прибавка счастья за дом используется и здесь, и в постройке.
+// ---------------------------------------------------------------------------
+// Счастье
+// ---------------------------------------------------------------------------
 const HAPPINESS = {
   /**
-   * Счастье — дискретный уровень, а не шкала 0–100.
-   *
-   * Уровень вычисляется каждый день: база от ставки налога плюс
-   * модификаторы (социальные здания, события), с ограничением по краям.
+   * Уровень счастья от −2 до +2. Пересчитывается каждый день с нуля:
+   * база от ставки налога плюс сумма эффектов «счастье» от построенных зданий.
    *
    *   −2  народ бежит, уходят 5 человек в день
    *   −1  недовольство, уходят 2 человека в день
    *    0  нейтрально
-   *   +1  прирост производства 10%
-   *   +2  прирост производства 25%
-   *
-   * Приток жителей — только через застройку домов и события.
-   * Повышенное счастье даёт прирост производства, пониженное — отток.
+   *   +1  каждое производственное здание даёт +1 ед. выработки
+   *   +2  каждое производственное здание даёт +2 ед. выработки
    */
   range: [-2, 2],
   start: 0,
 
   leavePerDayHigh: 5,   // столько уходит в день при −2
   leavePerDayLow: 2,    // столько уходит в день при −1
-  starvationOutflow: 3, // дополнительный отток при нехватке еды
-
-  // Множитель производства по уровню счастья
-  prodMult: { '-2': 1, '-1': 1, 0: 1, 1: 1.1, 2: 1.25 },
-
-  /**
-   * Модификаторы уровня счастья сверх ставки налога.
-   *
-   * Пока ставят не сами по себе, а вместе со зданием: храм без
-   * «Религии» ничего не даёт. В подэтапе 2.2 сюда добавятся социальные
-   * здания — церковь, таверна, площадь.
-   */
-  religionBonus: 1,
 
   // Подписи уровня для интерфейса
   levels: {
@@ -58,23 +49,15 @@ const HAPPINESS = {
 
 const POPULATION = {
   // Пассивного прироста нет: новые жители приходят только через постройку
-  // домов и события с выбором (SYSTEMS_SPEC §2). Раньше здесь был
-  // growthPerDay: 1, но из-за него город разрастался сам, а решение о
-  // застройке переставало что-то решать.
-  //
-  // Лимита населения тоже нет: дом вселяет жителя сразу при постройке,
-  // поэтому застройка остаётся единственным верным способом расти.
+  // домов и события с выбором (SYSTEMS_SPEC §2).
   foodPerCitizenPerDay: 0.5,
   starveDeathsPerShortageUnit: 0.2,
   residentsPerHouse: 1,
 };
 
 /**
- * Налоги — постоянная политика игрока, а не действие каждого хода.
- *
- * Ставка задаёт и доход, и базовое настроение народа: это и есть
- * налоговый маятник. Поднял налог — больше золота, но народ недоволен
- * и уходит, а вместе с ним падает и доход.
+ * Налоги — постоянная политика игрока. Ставка в процентах только для
+ * отображения; сбор фиксированный: золото с жителя в день.
  */
 const TAXES = [
   { rate: 0.10, happinessBase:  2, goldPerCitizen: 1 },
@@ -86,15 +69,12 @@ const TAXES = [
 
 export const BALANCE = {
   meta: {
-    // Версия 3: счастье стало уровнем и ушло из ресурсов, у состояния
-    // появилась ставка налога. Сохранения версии 2 несовместимы и
-    // отбрасываются — партия начинается заново.
-    schema: 3,
-    balanceVersion: 2,
-    // Метка сборки интерфейса. Показывается в плашке города, чтобы можно
-    // было сразу понять, что на экране свежая версия, а не закешированная
-    // старая. Поднимается при правках раскладки и внешнего вида.
-    build: '2026-10-11 · e',
+    // Версия 4: тиры поселения, ресурсы по уровням, новые здания, религия
+    // и вера удалены. Сохранения версии 3 несовместимы.
+    schema: 4,
+    balanceVersion: 3,
+    // Метка сборки интерфейса: показывается в плашке города
+    build: '2026-10-11 · f',
   },
 
   // --------------------------------------------------------------------------
@@ -108,71 +88,98 @@ export const BALANCE = {
     day: 1,
     year: 1,
     seasonIndex: 0,
+    /** Уровень поселения: 1 — Поселение. */
+    tier: 1,
     resources: {
       gold: 100,
       food: 50,
       wood: 30,
       stone: 20,
-      faith: 50,
-      knowledge: 10,
+      knowledge: 0,
       population: 10,
     },
     buildings: { houses: 1 },
   },
 
   // --------------------------------------------------------------------------
-  // Ресурсы (запасы) — отображаются в панели, тратятся, производятся
+  // Ресурсы
   //
-  // unit — формы родительного падежа для подписей вида «20 древесины».
-  // Без них интерфейс писал бы «20 древесина», что по-русски неверно.
+  // tier — уровень поселения, на котором ресурс виден и производится:
+  //   0 — виден всегда (золото, еда, знания);
+  //   1..4 — только на своём уровне. Ресурсы прошлых уровней скрываются
+  //   и больше не производятся, но накопленный запас остаётся в партии.
+  //
+  // Ресурсы уровня N нужны для перехода с уровня N на N+1 (development).
   // --------------------------------------------------------------------------
   resources: {
-    gold:      { name: 'Золото',    icon: '💰', unit: { one: 'золото', few: 'золота', many: 'золота' } },
-    food:      { name: 'Еда',       icon: '🍞', isFood: true, unit: { one: 'еды', few: 'еды', many: 'еды' } },
-    wood:      { name: 'Древесина', icon: '🪵', unit: { one: 'древесины', few: 'древесины', many: 'древесины' } },
-    stone:     { name: 'Камень',    icon: '🪨', unit: { one: 'камень', few: 'камня', many: 'камней' } },
-faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few: 'веры', many: 'веры' } },
-      knowledge: { name: 'Знания',    icon: '🧠', unit: { one: 'знание', few: 'знания', many: 'знаний' } },
+    gold:       { name: 'Золото',    icon: '💰', tier: 0, unit: { one: 'золото', few: 'золота', many: 'золота' } },
+    knowledge:  { name: 'Знания',    icon: '🧠', tier: 0, unit: { one: 'знание', few: 'знания', many: 'знаний' } },
+
+    // Пищевой ресурс меняется по уровням: зерно → мука → мясо → деликатесы
+    food:       { name: 'Зерно',     icon: '🍞', tier: 1, isFood: true, unit: { one: 'зерна', few: 'зерна', many: 'зерна' } },
+    wood:       { name: 'Древесина', icon: '🪵', tier: 1, unit: { one: 'древесины', few: 'древесины', many: 'древесины' } },
+    stone:      { name: 'Камень',    icon: '🪨', tier: 1, unit: { one: 'камень', few: 'камня', many: 'камней' } },
+
+    boards:     { name: 'Доски',     icon: '🪚', tier: 2, unit: { one: 'доска', few: 'доски', many: 'досок' } },
+    brick:      { name: 'Кирпич',    icon: '🧱', tier: 2, unit: { one: 'кирпич', few: 'кирпича', many: 'кирпичей' } },
+    flour:      { name: 'Мука',      icon: '🥣', tier: 2, isFood: true, unit: { one: 'муки', few: 'муки', many: 'муки' } },
+    clothes:    { name: 'Одежда',    icon: '👕', tier: 2, unit: { one: 'одежды', few: 'одежды', many: 'одежды' } },
+
+    coal:       { name: 'Уголь',     icon: '⚫', tier: 3, unit: { one: 'угля', few: 'угля', many: 'угля' } },
+    metal:      { name: 'Металл',    icon: '⚙️', tier: 3, unit: { one: 'металла', few: 'металла', many: 'металла' } },
+    tools:      { name: 'Инструменты', icon: '🔨', tier: 3, unit: { one: 'инструмент', few: 'инструмента', many: 'инструментов' } },
+    books:      { name: 'Книги',     icon: '📚', tier: 3, unit: { one: 'книга', few: 'книги', many: 'книг' } },
+    meat:       { name: 'Мясо',      icon: '🥩', tier: 3, isFood: true, unit: { one: 'мяса', few: 'мяса', many: 'мяса' } },
+
+    machines:   { name: 'Станки',    icon: '🔩', tier: 4, unit: { one: 'станок', few: 'станка', many: 'станков' } },
+    jewelry:    { name: 'Изделия',   icon: '💎', tier: 4, unit: { one: 'изделие', few: 'изделия', many: 'изделий' } },
+    wine:       { name: 'Вино',      icon: '🍷', tier: 4, unit: { one: 'вино', few: 'вина', many: 'вин' } },
+    delicacies: { name: 'Деликатесы', icon: '🥂', tier: 4, isFood: true, unit: { one: 'деликатес', few: 'деликатеса', many: 'деликатесов' } },
+    press:      { name: 'Печатная продукция', icon: '🗞️', tier: 4, unit: { one: 'печатная единица', few: 'печатные единицы', many: 'печатных единиц' } },
   },
 
-  /** Вера не копится выше сотни. */
-  faithMax: 100,
-
-  // Порядок вывода в панели статистики (население и счастье — не ресурсы)
-  resourceOrder: ['gold', 'food', 'wood', 'stone', 'faith', 'knowledge'],
+  // Порядок вывода в панели (видимые ресурсы выбираются по уровню)
+  resourceOrder: [
+    'gold', 'food', 'wood', 'stone', 'knowledge',
+    'boards', 'brick', 'flour', 'clothes',
+    'coal', 'metal', 'tools', 'books', 'meat',
+    'machines', 'jewelry', 'wine', 'delicacies', 'press',
+  ],
 
   // --------------------------------------------------------------------------
-  // Развитие поселения
+  // Уровни развития (SYSTEMS_SPEC §6)
   //
-  // Уровень требует накопить набор ресурсов и потратить его переходом.
-  // Пока реализован первый уровень целиком: его требования нужны
-  // интерфейсу, чтобы показать «собрано из целевого», — сам переход
-  // появится в подэтапе 2.4 вместе с новыми ресурсами.
+  // requirements — что списывается при переходе на следующий уровень.
+  // Переход — действие выбора, ресурсы тратятся.
   // --------------------------------------------------------------------------
   development: {
-    // Объём на позицию по тирам: 3 → 4 → 5 → 5 типов ресурсов и
-    // 100 → 200 → 300 → 400 единиц на каждый
-    tierAmounts: [100, 200, 300, 400],
-
     levels: [
       {
-        id: 'settlement',
-        name: 'Поселение',
-        icon: '🛖',
-        nextName: 'Деревня',
-        nextIcon: '🏠',
-
-        // Требования к переходу: ресурс → сколько нужно иметь
-        requirements: {
-          wood: 100,
-          stone: 100,
-          food: 100,
-        },
+        id: 'settlement', name: 'Поселение', icon: '🛖',
+        nextName: 'Деревня', nextIcon: '🏠',
+        requirements: { wood: 100, stone: 100, food: 100 },
+      },
+      {
+        id: 'village', name: 'Деревня', icon: '🏠',
+        nextName: 'Городок', nextIcon: '🏘️',
+        requirements: { boards: 200, brick: 200, flour: 200, clothes: 200 },
+      },
+      {
+        id: 'town', name: 'Городок', icon: '🏘️',
+        nextName: 'Город', nextIcon: '🏙️',
+        requirements: { metal: 300, coal: 300, tools: 300, books: 300, meat: 300 },
+      },
+      {
+        id: 'city', name: 'Город', icon: '🏙️',
+        nextName: 'Большой город', nextIcon: '🏛️',
+        requirements: { machines: 400, jewelry: 400, wine: 400, delicacies: 400, press: 400 },
+      },
+      {
+        id: 'metropolis', name: 'Большой город', icon: '🏛️',
+        nextName: null, nextIcon: null,
+        requirements: null,
       },
     ],
-
-    /** Уровень, в котором игра находится сейчас. */
-    startLevelIndex: 0,
   },
 
   // --------------------------------------------------------------------------
@@ -188,156 +195,309 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
   population: POPULATION,
 
   // --------------------------------------------------------------------------
-  // Сезоны
+  // Сезоны. foodPerFarm — изменение выработки одной фермы в день.
   // --------------------------------------------------------------------------
   seasons: [
-    { id: 'spring', name: 'Весна', icon: '🌸', days: 30, foodMult: 1.0 },
-    { id: 'summer', name: 'Лето',  icon: '☀️', days: 30, foodMult: 1.2 },
-    { id: 'autumn', name: 'Осень', icon: '🍂', days: 30, foodMult: 1.0 },
-    { id: 'winter', name: 'Зима',  icon: '❄️', days: 30, foodMult: 0.3 },
+    { id: 'spring', name: 'Весна', icon: '🌸', days: 30, foodPerFarm: 0 },
+    { id: 'summer', name: 'Лето',  icon: '☀️', days: 30, foodPerFarm: 2 },
+    { id: 'autumn', name: 'Осень', icon: '🍂', days: 30, foodPerFarm: 0 },
+    { id: 'winter', name: 'Зима',  icon: '❄️', days: 30, foodPerFarm: -3 },
   ],
 
   // --------------------------------------------------------------------------
   // Здания
   //
-  // cost        — списание при постройке
-  // workers     — ёмкость рабочих на одно здание (0 = рабочие не нужны)
-  // produces    — производство на одного рабочего в день
-  // maintenance — базовый коэффициент обслуживания в золоте за день
-  // unlock      — условия доступности в выборах
-  // onBuild     — эффекты, применяемые при постройке
+  // kind        — production | social | house | road
+  // levels      — на каких уровнях поселения здание можно строить
+  // level       — для production: уровень, на котором оно работает
+  // cost        — стоимость (если costByLevel нет)
+  // costByLevel — стоимость по уровням (дороги, дома)
+  // workers     — рабочих на одно здание (0 — не нужны)
+  // produces    — выработка одного рабочего в день
+  // maintenance — золото в день за здание (общий множитель — economy)
+  // unlock      — условия выбора: freeWorkers — свободные жители
+  // effects     — эффекты одного здания (суммируются по всем зданиям)
+  //
+  // Эффекты:
+  //   happiness           — прибавка к уровню счастья
+  //   goldPerCitizen      — золото с каждого жителя в день
+  //   goldPerDay          — золото в день
+  //   knowledgePerDay     — знания в день
+  //   foodPerDay          — еда в день
+  //   epidemicLossReduction — жертв эпидемии меньше на N
+  //   guardDefense        — защита от налётов и осады
+  //   suppressionGuard    — сила подавления волнений
+  //   fireDays            — длительность пожара (сокращение, дней)
+  //   negativeDaysReduction — сокращение негативных событий (дней)
+  //   productionPerProducer — выработка производственных зданий +N за дорогу
   // --------------------------------------------------------------------------
   buildings: {
+    // ---- Дороги: строятся на любом уровне, накапливаются ----------------
+    roads: {
+      name: 'Дорога', actionLabel: 'Построить дорогу', icon: '🛣️',
+      kind: 'road', visual: false, levels: [1, 2, 3, 4],
+      workers: 0, produces: null, maintenance: 0,
+      costByLevel: {
+        1: { gold: 100, wood: 80, stone: 60 },
+        2: { gold: 200 },
+        3: { gold: 400 },
+        4: { gold: 800 },
+      },
+      effects: {
+        productionPerProducer: 2,
+        fireDays: -1,
+        goldPerDay: 5,
+      },
+    },
+
+    // ---- Дома ------------------------------------------------------------
     houses: {
       name: 'Дом', actionLabel: 'Построить дом', icon: '🏠',
+      kind: 'house', levels: [1, 2, 3, 4],
       cost: { wood: 20, stone: 10 },
-      workers: 0,
-      produces: null,
-      maintenance: 0.1,
-      unlock: {},
+      costByLevel: {
+        1: { wood: 20, stone: 10 },
+        2: { gold: 40 },
+        3: { gold: 60 },
+        4: { gold: 90 },
+      },
+      workers: 0, produces: null, maintenance: 0.1,
+      effects: {},
       onBuild: { residents: POPULATION.residentsPerHouse },
     },
+
+    // ==== УРОВЕНЬ 1. ПОСЕЛЕНИЕ =============================================
     farms: {
       name: 'Ферма', actionLabel: 'Построить ферму', icon: '🌾',
-      cost: { gold: 15, wood: 10 },
-      workers: 2,
-      produces: { food: 5 },
-      maintenance: 0.2,
-      unlock: { freeWorkers: 1 },
+      kind: 'production', level: 1, levels: [1],
+      cost: { gold: 15, wood: 10 }, workers: 2, produces: { food: 5 },
+      maintenance: 0.2, unlock: { freeWorkers: 1 },
     },
     lumberMills: {
       name: 'Лесопилка', actionLabel: 'Построить лесопилку', icon: '🪓',
-      cost: { gold: 20, wood: 15 },
-      workers: 2,
-      produces: { wood: 8 },
-      maintenance: 0.3,
-      unlock: { freeWorkers: 1 },
+      kind: 'production', level: 1, levels: [1],
+      cost: { gold: 20, wood: 15 }, workers: 2, produces: { wood: 8 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     quarries: {
       name: 'Карьер', actionLabel: 'Построить карьер', icon: '⛏️',
-      cost: { gold: 25, wood: 10, stone: 5 },
-      workers: 2,
-      produces: { stone: 6 },
-      maintenance: 0.3,
-      unlock: { freeWorkers: 1 },
+      kind: 'production', level: 1, levels: [1],
+      cost: { gold: 25, wood: 10, stone: 5 }, workers: 2, produces: { stone: 6 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
+    },
+    well: {
+      name: 'Колодец', actionLabel: 'Выкопать колодец', icon: '🕯️',
+      kind: 'social', levels: [1],
+      cost: { stone: 15, wood: 10 }, workers: 0, produces: null, maintenance: 0.1,
+      effects: { fireDays: -1 },
+    },
+
+    // ==== УРОВЕНЬ 2. ДЕРЕВНЯ ===============================================
+    sawmills: {
+      name: 'Пилорама', actionLabel: 'Построить пилораму', icon: '🪚',
+      kind: 'production', level: 2, levels: [2],
+      cost: { gold: 40 }, workers: 2, produces: { boards: 12 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
+    },
+    brickworks: {
+      name: 'Кирпичный завод', actionLabel: 'Построить кирпичный завод', icon: '🧱',
+      kind: 'production', level: 2, levels: [2],
+      cost: { gold: 40 }, workers: 2, produces: { brick: 8 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
+    },
+    mills: {
+      name: 'Мельница', actionLabel: 'Построить мельницу', icon: '🌬️',
+      kind: 'production', level: 2, levels: [2],
+      cost: { gold: 35 }, workers: 2, produces: { flour: 8 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
+    },
+    weavings: {
+      name: 'Ткацкая', actionLabel: 'Открыть ткацкую', icon: '🧵',
+      kind: 'production', level: 2, levels: [2],
+      cost: { gold: 35 }, workers: 2, produces: { clothes: 6 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
     },
     markets: {
-      name: 'Рынок', actionLabel: 'Построить рынок', icon: '🏪',
-      cost: { gold: 30, wood: 20, stone: 10 },
-      // Рынок больше не производит золото рабочими: золото идёт от налога,
-      // а рынок добавляет к сбору с каждого жителя
-      workers: 1,
-      produces: { wood: 2 },
-      maintenance: 0.5,
-      unlock: { buildings: { farms: 1 }, freeWorkers: 3 },
+      name: 'Рынок', actionLabel: 'Открыть рынок', icon: '🛒',
+      kind: 'social', levels: [2],
+      cost: { gold: 30 }, workers: 0, produces: null, maintenance: 0.5,
+      effects: { goldPerCitizen: 1 },
     },
-    temples: {
-      name: 'Храм', actionLabel: 'Построить храм', icon: '⛪',
-      cost: { gold: 50, wood: 30, stone: 20 },
-      workers: 1,
-      produces: { faith: 2 },
-      maintenance: 0.4,
-      unlock: { buildings: { houses: 3 }, freeWorkers: 1 },
+    taverns: {
+      name: 'Таверна', actionLabel: 'Открыть таверну', icon: '🍺',
+      kind: 'social', levels: [2],
+      cost: { gold: 50 }, workers: 0, produces: null, maintenance: 0.4,
+      effects: { happiness: 1 },
     },
-    schools: {
+    fireBrigades: {
+      name: 'Пожарная дружина', actionLabel: 'Создать пожарную дружину', icon: '🚒',
+      kind: 'social', levels: [2],
+      cost: { gold: 40 }, workers: 0, produces: null, maintenance: 0.3,
+      effects: { fireDays: -2 },
+    },
+
+    // ==== УРОВЕНЬ 3. ГОРОДОК ===============================================
+    mines: {
+      name: 'Шахта', actionLabel: 'Построить шахту', icon: '⛏️',
+      kind: 'production', level: 3, levels: [3],
+      cost: { gold: 80 }, workers: 3, produces: { coal: 6 },
+      maintenance: 0.4, unlock: { freeWorkers: 1 },
+    },
+    smelters: {
+      name: 'Плавильня', actionLabel: 'Построить плавильню', icon: '🔥',
+      kind: 'production', level: 3, levels: [3],
+      cost: { gold: 90 }, workers: 3, produces: { metal: 5 },
+      maintenance: 0.4, unlock: { freeWorkers: 1 },
+    },
+    forges: {
+      name: 'Кузница', actionLabel: 'Построить кузницу', icon: '⚒️',
+      kind: 'production', level: 3, levels: [3],
+      cost: { gold: 90 }, workers: 2, produces: { tools: 3 },
+      maintenance: 0.4, unlock: { freeWorkers: 1 },
+    },
+    scriptoriums: {
+      name: 'Скрипторий', actionLabel: 'Открыть скрипторий', icon: '📜',
+      kind: 'production', level: 3, levels: [3],
+      cost: { gold: 70 }, workers: 2, produces: { books: 3 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
+    },
+    cattleYards: {
+      name: 'Скотный двор', actionLabel: 'Построить скотный двор', icon: '🐄',
+      kind: 'production', level: 3, levels: [3],
+      cost: { gold: 60 }, workers: 2, produces: { meat: 4 },
+      maintenance: 0.3, unlock: { freeWorkers: 1 },
+    },
+    school: {
       name: 'Школа', actionLabel: 'Построить школу', icon: '🏫',
-      cost: { gold: 40, wood: 25 },
-      workers: 1,
-      produces: { knowledge: 0.5 },
-      maintenance: 0.3,
-      unlock: { buildings: { farms: 2 }, freeWorkers: 1 },
+      kind: 'social', levels: [3],
+      cost: { gold: 80 }, workers: 0, produces: null, maintenance: 0.3,
+      effects: { knowledgePerDay: 1 },
     },
-    walls: {
-      name: 'Стена', actionLabel: 'Построить стену', icon: '🧱',
-      cost: { gold: 40, stone: 30 },
-      workers: 0,
-      produces: null,
-      maintenance: 0.2,
-      unlock: { buildings: { houses: 5 } },
+    hospital: {
+      name: 'Больница', actionLabel: 'Построить больницу', icon: '🏥',
+      kind: 'social', levels: [3],
+      cost: { gold: 100 }, workers: 0, produces: null, maintenance: 0.5,
+      effects: { epidemicLossReduction: 2 },
     },
-    towers: {
-      name: 'Башня', actionLabel: 'Построить башню', icon: '🗼',
-      cost: { gold: 60, wood: 20, stone: 40 },
-      workers: 0,
-      produces: null,
-      maintenance: 0.5,
-      unlock: { buildings: { walls: 1 } },
+    guard: {
+      name: 'Стража', actionLabel: 'Нанять стражу', icon: '👮',
+      kind: 'social', levels: [3],
+      cost: { gold: 80 }, workers: 0, produces: null, maintenance: 0.4,
+      effects: { guardDefense: 5, suppressionGuard: 3 },
+    },
+    bank: {
+      name: 'Банк', actionLabel: 'Открыть банк', icon: '🏦',
+      kind: 'social', levels: [3],
+      cost: { gold: 120 }, workers: 0, produces: null, maintenance: 0.6,
+      effects: { goldPerDay: 3 },
+    },
+    fireHouses: {
+      name: 'Пожарная часть', actionLabel: 'Открыть пожарную часть', icon: '🚒',
+      kind: 'social', levels: [3],
+      cost: { gold: 70 }, workers: 0, produces: null, maintenance: 0.4,
+      effects: { fireDays: -3 },
+    },
+
+    // ==== УРОВЕНЬ 4. ГОРОД =================================================
+    machineShops: {
+      name: 'Механическая мастерская', actionLabel: 'Построить мастерскую', icon: '⚙️',
+      kind: 'production', level: 4, levels: [4],
+      cost: { gold: 150 }, workers: 3, produces: { machines: 2 },
+      maintenance: 0.6, unlock: { freeWorkers: 1 },
+    },
+    jewelers: {
+      name: 'Ювелирная мастерская', actionLabel: 'Открыть ювелирную', icon: '💎',
+      kind: 'production', level: 4, levels: [4],
+      cost: { gold: 150 }, workers: 2, produces: { jewelry: 2 },
+      maintenance: 0.6, unlock: { freeWorkers: 1 },
+    },
+    wineries: {
+      name: 'Винодельня', actionLabel: 'Построить винодельню', icon: '🍷',
+      kind: 'production', level: 4, levels: [4],
+      cost: { gold: 140 }, workers: 2, produces: { wine: 2 },
+      maintenance: 0.6, unlock: { freeWorkers: 1 },
+    },
+    gastronomies: {
+      name: 'Гастрономия', actionLabel: 'Открыть гастрономию', icon: '🥂',
+      kind: 'production', level: 4, levels: [4],
+      cost: { gold: 160 }, workers: 2, produces: { delicacies: 2 },
+      maintenance: 0.6, unlock: { freeWorkers: 1 },
+    },
+    printingHouses: {
+      name: 'Типография', actionLabel: 'Открыть типографию', icon: '🗞️',
+      kind: 'production', level: 4, levels: [4],
+      cost: { gold: 150 }, workers: 2, produces: { press: 2 },
+      maintenance: 0.6, unlock: { freeWorkers: 1 },
+    },
+    townHall: {
+      name: 'Ратуша', actionLabel: 'Построить ратушу', icon: '🏛️',
+      kind: 'social', levels: [4],
+      cost: { gold: 250 }, workers: 0, produces: null, maintenance: 0.8,
+      effects: { negativeDaysReduction: 1 },
+    },
+    theater: {
+      name: 'Театр', actionLabel: 'Построить театр', icon: '🎭',
+      kind: 'social', levels: [4],
+      cost: { gold: 200 }, workers: 0, produces: null, maintenance: 0.6,
+      effects: { happiness: 1 },
+    },
+    monument: {
+      name: 'Памятник', actionLabel: 'Возвести памятник', icon: '🗿',
+      kind: 'social', levels: [4],
+      cost: { gold: 300 }, workers: 0, produces: null, maintenance: 0.5,
+      effects: { happiness: 1 },
+    },
+    aqueduct: {
+      name: 'Акведук', actionLabel: 'Построить акведук', icon: '🌐',
+      kind: 'social', levels: [4],
+      cost: { gold: 220 }, workers: 0, produces: null, maintenance: 0.6,
+      effects: { foodPerDay: 4 },
+    },
+    harbour: {
+      name: 'Пристань', actionLabel: 'Построить пристань', icon: '⚓',
+      kind: 'social', levels: [4],
+      cost: { gold: 200 }, workers: 0, produces: null, maintenance: 0.6,
+      effects: { goldPerDay: 5 },
+    },
+    fireStation: {
+      name: 'Городская пожарная станция', actionLabel: 'Построить пожарную станцию', icon: '🚨',
+      kind: 'social', levels: [4],
+      cost: { gold: 400 }, workers: 0, produces: null, maintenance: 0.8,
+      effects: { fireDays: -5 },
     },
   },
 
   // --------------------------------------------------------------------------
   // Технологии
   //
-  // productionMult        — множитель производства указанного ресурса
-  // happinessPerWorker    — прибавка счастья за рабочего в requiresBuilding
-  // lossMult              — множитель потерь (например, от эпидемии)
+  // productionBonus — +amount выработки ресурса за каждое здание building
+  // effectBonus     — +amount к эффекту effect за каждое здание building
   // --------------------------------------------------------------------------
   technologies: {
     advancedFarming: {
       name: 'Передовое земледелие', actionLabel: 'Развить передовое земледелие', icon: '🌱',
-      cost: { knowledge: 20 },
-      requiresBuilding: 'farms',
-      productionMult: { food: 1.5 },
+      cost: { knowledge: 20 }, requiresBuilding: 'farms',
+      productionBonus: { building: 'farms', resource: 'food', amount: 2 },
     },
     lumberProcessing: {
       name: 'Обработка древесины', actionLabel: 'Развить обработку древесины', icon: '🌳',
-      cost: { knowledge: 15 },
-      requiresBuilding: 'lumberMills',
-      productionMult: { wood: 1.5 },
+      cost: { knowledge: 15 }, requiresBuilding: 'lumberMills',
+      productionBonus: { building: 'lumberMills', resource: 'wood', amount: 2 },
     },
     stoneMasonry: {
       name: 'Каменная кладка', actionLabel: 'Развить каменную кладку', icon: '🪨',
-      cost: { knowledge: 15 },
-      requiresBuilding: 'quarries',
-      productionMult: { stone: 1.5 },
+      cost: { knowledge: 15 }, requiresBuilding: 'quarries',
+      productionBonus: { building: 'quarries', resource: 'stone', amount: 2 },
     },
     tradeRoutes: {
       name: 'Торговые маршруты', actionLabel: 'Развить торговые маршруты', icon: '💰',
-      cost: { knowledge: 25 },
-      requiresBuilding: 'markets',
-      productionMult: { gold: 1.5 },
-    },
-    religion: {
-      name: 'Религия', actionLabel: 'Развить религию', icon: '⛪',
-      cost: { faith: 50 },
-      requiresBuilding: 'temples',
-      happinessPerWorker: 1,
+      cost: { knowledge: 25 }, requiresBuilding: 'markets',
+      effectBonus: { building: 'markets', effect: 'goldPerDay', amount: 3 },
     },
     education: {
       name: 'Образование', actionLabel: 'Развить образование', icon: '🎓',
-      cost: { knowledge: 30 },
-      requiresBuilding: 'schools',
-      lossMult: { plague: 0.5 },
-    },
-    fortification: {
-      name: 'Фортификация', actionLabel: 'Развить фортификацию', icon: '🛡️',
-      cost: { knowledge: 35 },
-      requiresBuilding: 'walls',
-      // ВНИМАНИЕ: в прототипе технология тратила знания, но не давала
-      // никакого эффекта — мёртвый сток. Поведение сохранено как есть, чтобы
-      // не менять баланс незаметно. Эффект зададим на этапе 2 вместе с
-      // налётами и осадой. См. docs/ROADMAP.md, раздел «Известные проблемы».
-      noEffectYet: true,
+      cost: { knowledge: 30 }, requiresBuilding: 'school',
+      effectBonus: { building: 'school', effect: 'epidemicLossReduction', amount: 2 },
     },
   },
 
@@ -345,18 +505,16 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
   // Экономика
   // --------------------------------------------------------------------------
   economy: {
-    // Обслуживание: floor(sum(кол-во × maintenance) × (1 + day / growthDivisor))
+    // Обслуживание: сумма maintenance × (1 + day / growthDivisor)
     maintenanceGrowthDivisor: 1000,
     trade: { foodCost: 15, goldGain: 30 },
     expedition: {
       cost: 10,
       baseSuccessChance: 0.6,
       knowledgeBonusPerHundred: 0.2,
-      rewards: [
-        { resource: 'gold',  min: 50, max: 99, weight: 0.33 },
-        { resource: 'wood',  min: 30, max: 69, weight: 0.33 },
-        { resource: 'stone', min: 20, max: 49, weight: 0.34 },
-      ],
+      // Награда: золото или материал текущего уровня
+      goldReward: { min: 50, max: 99, weight: 0.33 },
+      materialReward: { min: 20, max: 60, weight: 0.67 },
       failureLoss: { min: 5, max: 14 },
     },
   },
@@ -383,14 +541,12 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
         minPopulation: 20,
         strengthBase: 10,
         strengthPerDays: 0.05,
-        towerDefense: 5,
         populationDefenseDivisor: 2,
         defendRatio: 0.8,
         goldLoot: { min: 15, max: 39 },
         goldLossMax: 30,
         populationLossPercent: 0.2,
         populationLossMax: 5,
-        // События сдвигают уровень на шаг, а не на проценты
         happinessLoss: 1,
       },
       disease: {
@@ -422,7 +578,6 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
         // Волнения возможны, только когда народ уже недоволен (-1 и ниже)
         happinessBelow: -1,
         suppressionHappinessBase: -1,
-        suppressionTower: 3,
         suppressionPerPopulationHalf: 0.5,
         happinessGainOnSuccess: 1,
         populationLossPercent: 0.3,
@@ -430,11 +585,9 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
       },
       siege: {
         name: 'Осада', icon: '🏰', kind: 'disaster',
-        requiresBuildings: ['walls'],
+        requiresBuildings: ['guard'],
         enemyStrengthBase: 40,
         enemyStrengthPerDays: 0.1,
-        wallDefense: 10,
-        towerDefense: 15,
         populationDefenseDivisor: 2,
         populationLossMax: 15,
         housesLossPerDamage: 5,
@@ -450,8 +603,9 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
   // --------------------------------------------------------------------------
   // Условия окончания партии
   //
-  // Поражение проверяется сверху вниз, победа — последней и потому имеет
-  // приоритет: так вела себя исходная проверка, и это разумно.
+  // Поражение проверяется сверху вниз. Победа проверяется последней и
+  // потому имеет приоритет. Итоговый проект (SYSTEMS_SPEC §6, подэтап 2.5)
+  // пока не реализован: победа — достижение последнего уровня.
   // --------------------------------------------------------------------------
   endConditions: {
     defeat: [
@@ -476,8 +630,8 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
     ],
     victory: {
       populationMin: 100,
-      buildings: { temples: 3, markets: 3 },
-      reason: 'Ваш город процветает! Вы выиграли!',
+      tierMin: 5,
+      reason: 'Ваш город достиг величия. Вы выиграли!',
       icon: '🎉',
     },
   },
@@ -491,24 +645,28 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
   // --------------------------------------------------------------------------
   choices: {
     slots: 4,
-    // Полные идентификаторы действий, ровно в том виде, в каком их
-    // возвращает engine.availableActions(). Порядок значим: чем выше,
-    // тем раньше действие попадёт в слоты.
     priority: [
-      'build:houses', 'build:farms', 'build:lumberMills', 'build:quarries', 'build:markets',
-      'build:temples', 'build:schools', 'build:walls', 'build:towers',
+      'tier:up',
+      'build:houses', 'build:farms', 'build:lumberMills', 'build:quarries', 'build:well',
+      'build:roads',
+      'build:sawmills', 'build:brickworks', 'build:mills', 'build:weavings', 'build:markets',
+      'build:taverns', 'build:fireBrigades',
+      'build:mines', 'build:smelters', 'build:forges', 'build:scriptoriums', 'build:cattleYards',
+      'build:school', 'build:hospital', 'build:guard', 'build:bank', 'build:fireHouses',
+      'build:machineShops', 'build:jewelers', 'build:wineries', 'build:gastronomies',
+      'build:printingHouses', 'build:townHall', 'build:theater', 'build:monument',
+      'build:aqueduct', 'build:harbour', 'build:fireStation',
       'develop:advancedFarming', 'develop:lumberProcessing', 'develop:stoneMasonry',
-      'develop:tradeRoutes', 'develop:religion', 'develop:education', 'develop:fortification',
-      // Ставка налога — решение, которое важнее торговли, поэтому налог
-      // стоит раньше неё и предлагается раз в taxChangeEveryDays дней
+      'develop:tradeRoutes', 'develop:education',
       'tax',
       'trade', 'expedition', 'wait',
     ],
     actions: {
-      trade:     { label: 'Торговать', icon: '💵' },
+      trade:      { label: 'Торговать', icon: '💵' },
       expedition: { label: 'Отправить экспедицию', icon: '🗺️' },
-      tax:       { label: 'Изменить налоги', icon: '⚖️' },
-      wait:      { label: 'Подождать', icon: '⏳' },
+      tax:        { label: 'Изменить налоги', icon: '⚖️' },
+      tierUp:     { label: 'Перейти на следующий уровень', icon: '⬆️' },
+      wait:       { label: 'Подождать', icon: '⏳' },
     },
   },
 
@@ -532,42 +690,33 @@ faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few
   },
 
   // --------------------------------------------------------------------------
-  // Налоги и доход (SYSTEMS_SPEC §3)
+  // Налоги
   // --------------------------------------------------------------------------
 
   /** Ставка налога по умолчанию: 30% — нейтральное настроение народа. */
   taxDefaultIndex: 2,
 
-  /**
-   * Как часто предлагается сменить ставку. Налог — постоянная политика,
-   * поэтому он не должен занимать слот каждый ход.
-   */
+  /** Как часто предлагается сменить ставку. */
   taxChangeEveryDays: 3,
 
   taxes: TAXES,
 
   /**
-   * Множитель сбора по тиру населения. После перехода на новый тир
-   * жители платят больше. Используется с 1 на этапе 1.
+   * Множитель золота с жителя по уровню поселения: на уровне N жители
+   * платят tierTaxMult[N − 1] от базовой ставки.
    */
-  tierTaxMult: [1, 2, 4, 8],
+  tierTaxMult: [1, 2, 4, 8, 16],
 
   /** Подписи ставок для интерфейса. */
   taxLabels: [
     'Ничтожный', 'Низкий', 'Обычный', 'Высокий', 'Ярмарка',
   ],
-
-  /** Доход от налога: золото с одного жителя в день. */
-  income: {
-    /** Надбавка к сбору за каждый рынок, золото с жителя в день. */
-    marketGoldPerCitizen: 1,
-  },
 };
 
-// Имена ресурсов, по которым ведётся производство и обслуживание
+/** Ключи зданий, которые производят ресурсы (работают с рабочими). */
 export const WORKFORCE_BUILDINGS = Object.freeze(
   Object.entries(BALANCE.buildings)
-    .filter(([, def]) => def.workers > 0)
+    .filter(([, def]) => def.kind === 'production')
     .map(([key]) => key),
 );
 

@@ -1,52 +1,106 @@
 // ============================================================================
 // Economy — расчёты производства, потребления и обслуживания.
 //
-// Здесь считается ВСЁ, что связано с числами за день. В прототипе расчёт
-// производства существовал в двух местах (getProduction и produceResources),
-// и правка одного не трогала второй — предварительный подсчёт в интерфейсе
-// мог расходиться с реальным итогом. Теперь источник один.
+// Здесь считается ВСЁ, что связано с числами за день. Источник один,
+// поэтому предварительный подсчёт в интерфейсе не может разойтись с итогом.
+//
+// Правила зданий:
+//   * производственное здание работает только на своём уровне поселения;
+//   * социальные и дорожные здания действуют на всех уровнях;
+//   * эффекты одного типа суммируются по всем действующим зданиям.
 // ============================================================================
 
 import { BALANCE, WORKFORCE_BUILDINGS } from '../balance.js';
 
 /**
+ * Пищевой ресурс текущего уровня: зерно → мука → мясо → деликатесы.
+ * Берётся самый высокий из пищевых ресурсов, не выше текущего уровня.
+ */
+export function currentFoodKey(state) {
+  let best = 'food';
+  let bestTier = -1;
+
+  for (const [key, def] of Object.entries(BALANCE.resources)) {
+    if (!def.isFood) continue;
+    if (def.tier > state.tier || def.tier <= bestTier) continue;
+    best = key;
+    bestTier = def.tier;
+  }
+
+  return best;
+}
+
+/** Все ресурсы с нулями — основа для расчётов. */
+export function emptyOutput() {
+  return Object.fromEntries(Object.keys(BALANCE.resources).map((key) => [key, 0]));
+}
+
+/**
+ * Здание сейчас работает?
+ * Производственное — только на своём уровне. Остальные — всегда.
+ */
+export function isOperating(def, tier) {
+  if (def.kind === 'production') return def.level === tier;
+  return true;
+}
+
+/** Стоимость здания на данном уровне поселения. */
+export function costOf(def, tier) {
+  return def.costByLevel?.[tier] ?? def.cost ?? {};
+}
+
+/** Сумма эффекта по всем действующим зданиям, включая бонусы технологий. */
+export function socialEffect(state, effect) {
+  let total = 0;
+
+  for (const [key, def] of Object.entries(BALANCE.buildings)) {
+    const count = state.buildingCount(key);
+    if (count <= 0) continue;
+    if (!isOperating(def, state.tier)) continue;
+    total += (def.effects?.[effect] ?? 0) * count;
+  }
+
+  for (const [techKey, tech] of Object.entries(BALANCE.technologies)) {
+    if (!state.hasTechnology(techKey)) continue;
+    const bonus = tech.effectBonus;
+    if (!bonus || bonus.effect !== effect) continue;
+    total += bonus.amount * state.buildingCount(bonus.building);
+  }
+
+  return total;
+}
+
+/**
  * Уровень счастья на сегодня.
  *
- * Считается заново каждый день: база от ставки налога плюс модификаторы.
- * Поэтому он не «копит» ошибки и не требует отдельного сброса.
- *
- *   ставка налога            даёт базовый уровень
- *   технология «Религия»    +1, если есть хотя бы один храм
- *   события                  свои модификаторы (подэтап 2.3)
- *
- * Результат ограничен пределами [-2, +2].
+ * База от ставки налога плюс сумма эффектов «счастье» от построенных
+ * зданий. Результат ограничен пределами [-2, +2].
  */
 export function computeHappiness(state) {
-  const { happiness, taxes } = BALANCE;
+  const { happiness, taxes, taxDefaultIndex } = BALANCE;
   const [min, max] = happiness.range;
 
-  const tax = state.taxRate ?? taxes[BALANCE.taxDefaultIndex];
-  let level = tax.happinessBase;
-
-  if (state.hasTechnology('religion') && state.buildingCount('temples') > 0) {
-    level += happiness.religionBonus;
-  }
+  const tax = state.taxRate ?? taxes[taxDefaultIndex];
+  const level = tax.happinessBase + socialEffect(state, 'happiness');
 
   return Math.min(max, Math.max(min, level));
 }
 
-/** Сколько золота приносит налог за день. */
+/**
+ * Сбор налогов за день в золоте.
+ *
+ * Базовая ставка растёт с уровнем поселения; рынки добавляют золото с
+ * каждого жителя; банк, пристань и дороги дают золото в день.
+ */
 export function computeTaxIncome(state) {
   const tax = state.taxRate;
-  const tierMult = BALANCE.tierTaxMult[0] ?? 1;
-  const perCitizen = tax.goldPerCitizen * tierMult;
+  const tierMult = BALANCE.tierTaxMult[state.tier - 1] ?? 1;
+  const perCitizen = tax.goldPerCitizen * tierMult + socialEffect(state, 'goldPerCitizen');
 
   const fromCitizens = state.population * perCitizen;
+  const fixed = socialEffect(state, 'goldPerDay');
 
-  // Рынки не производят золото рабочими, а добавляют к сбору налога
-  const fromMarkets = state.buildingCount('markets') * BALANCE.income.marketGoldPerCitizen;
-
-  return Math.floor(fromCitizens + fromMarkets * state.population);
+  return Math.max(0, Math.floor(fromCitizens + fixed));
 }
 
 /** Сколько жителей уйдёт из-за недовольства. */
@@ -59,45 +113,56 @@ export function computeHappinessOutflow(state) {
 
 /**
  * Производство за день.
- * Учитывает технологии, сезонные множители и настроение народа.
- * faith ограничен сверху 100 — как было в прототипе.
+ *
+ * Каждое действующее производственное здание с рабочими даёт:
+ *   рабочие × выработка на одного
+ *   + дороги × productionPerProducer
+ *   + уровень счастья (если положительный)
+ *   + бонус технологии, если она открыта
+ *   + сезонная поправка (только для ферм)
  */
 export function computeProduction(state) {
-  const seasonFoodMult = BALANCE.seasons[state.seasonIndex].foodMult;
-  const moodMult = state.productionMultiplier;
-  const out = { gold: 0, food: 0, wood: 0, stone: 0, faith: 0, knowledge: 0 };
+  const out = emptyOutput();
+  const season = BALANCE.seasons[state.seasonIndex];
+  const roads = state.buildingCount('roads');
+  const roadBonus = roads * (BALANCE.buildings.roads.effects.productionPerProducer ?? 0);
+  const moodBonus = Math.max(0, state.happinessLevel);
 
   for (const buildingKey of WORKFORCE_BUILDINGS) {
     const def = BALANCE.buildings[buildingKey];
+    if (!isOperating(def, state.tier)) continue;
     if (!def.produces) continue;
 
     const workers = state.workerCount(buildingKey);
     if (workers <= 0) continue;
 
+    // Бонусы действуют на каждое работающее здание, а не на тип целиком.
+    // Работает столько зданий, сколько нужно, чтобы разместить рабочих.
+    const working = Math.min(state.buildingCount(buildingKey), Math.ceil(workers / def.workers));
+
     for (const [resource, perWorker] of Object.entries(def.produces)) {
       let amount = workers * perWorker;
 
-      // Множитель от технологии, производящей этот ресурс
+      // Каждое работающее здание получает бонусы дорог и счастья
+      amount += working * (roadBonus + moodBonus);
+
       for (const [techKey, tech] of Object.entries(BALANCE.technologies)) {
         if (!state.hasTechnology(techKey)) continue;
-        const mult = tech.productionMult?.[resource];
-        if (mult) amount *= mult;
+        const bonus = tech.productionBonus;
+        if (bonus && bonus.building === buildingKey && bonus.resource === resource) {
+          amount += bonus.amount * working;
+        }
       }
 
-      if (resource === 'food') amount *= seasonFoodMult;
+      if (resource === 'food' && buildingKey === 'farms') {
+        amount += season.foodPerFarm * working;
+      }
 
-      out[resource] += Math.floor(amount);
+      out[resource] += Math.max(0, Math.floor(amount));
     }
   }
 
-  // Настроение народа прибавляет к производству всех ресурсов, кроме
-  // золота: золото идёт от налога, а не от работы.
-  if (moodMult !== 1) {
-    for (const key of Object.keys(out)) {
-      if (key === 'gold') continue;
-      out[key] = Math.floor(out[key] * moodMult);
-    }
-  }
+  out[currentFoodKey(state)] += socialEffect(state, 'foodPerDay');
 
   return out;
 }
@@ -106,7 +171,8 @@ export function computeProduction(state) {
 export function computeMaintenance(state) {
   let sum = 0;
   for (const [key, def] of Object.entries(BALANCE.buildings)) {
-    sum += state.buildingCount(key) * def.maintenance;
+    if (!isOperating(def, state.tier)) continue;
+    sum += state.buildingCount(key) * (def.maintenance ?? 0);
   }
   const growth = 1 + state.day / BALANCE.economy.maintenanceGrowthDivisor;
   return Math.floor(sum * growth);
@@ -121,34 +187,45 @@ export function computeFoodConsumption(state) {
 export function computeDaily(state) {
   return {
     production: computeProduction(state),
+    foodKey: currentFoodKey(state),
     maintenance: computeMaintenance(state),
     foodConsumption: computeFoodConsumption(state),
+    knowledge: socialEffect(state, 'knowledgePerDay'),
+    taxIncome: computeTaxIncome(state),
   };
 }
 
 /**
+ * Ресурсы, видимые на текущем уровне: всегда видимые плюс свой уровень.
+ * Ресурсы прошлых уровней скрыты и не производятся.
+ */
+export function visibleResources(state) {
+  return BALANCE.resourceOrder.filter((key) => {
+    const tier = BALANCE.resources[key].tier;
+    return tier === 0 || tier === state.tier;
+  });
+}
+
+/**
  * Потребление: еда и обслуживание зданий.
- *
- * Уровень счастья здесь не трогается: он вычисляется заново каждый день
- * из ставки налога и модификаторов, а не накапливается.
- *
  * Возвращает список записей для хроники, не трогая саму хронику.
  */
 export function applyConsumption(state) {
   const notes = [];
 
   const need = computeFoodConsumption(state);
-  const food = state.resource('food');
+  const foodKey = currentFoodKey(state);
+  const food = state.resource(foodKey);
 
   if (food >= need) {
-    state.addResource('food', -need);
+    state.addResource(foodKey, -need);
     state.stats.totalFoodConsumed += need;
   } else {
     const shortage = need - food;
-    state.setResource('food', 0);
+    state.setResource(foodKey, 0);
 
     // Нехватка еды отбирает жителей: часть от голода, дополнительно —
-    // по числу недовольных. Голод — причина ухода, а не отдельная смерть.
+    // по числу недовольных.
     const starved = Math.floor(shortage * BALANCE.population.starveDeathsPerShortageUnit);
     const lost = Math.min(
       starved + computeHappinessOutflow(state),
@@ -183,9 +260,7 @@ export function applyConsumption(state) {
 
 /**
  * Отток из-за недовольства.
- *
- * Народ уходит сам: −2 означает пятерых в день, −1 — двоих. Счастье при
- * этом не ухудшается — оно и так минимально.
+ * Народ уходит сам: при −2 — пятеро в день, при −1 — двое.
  */
 export function applyHappinessOutflow(state) {
   const leaving = Math.min(computeHappinessOutflow(state), state.population);
@@ -196,29 +271,21 @@ export function applyHappinessOutflow(state) {
   return leaving;
 }
 
-/** Производство за день. */
+/** Производство за день: ресурсы и знания от социальных зданий. */
 export function applyProduction(state) {
   const production = computeProduction(state);
 
   for (const [resource, amount] of Object.entries(production)) {
-    if (amount === 0) continue;
-
-    if (resource === 'faith') {
-      // В прототипе вера ограничена сверху сотней
-      state.setResource('faith', Math.min(BALANCE.faithMax, state.resource('faith') + amount));
-    } else {
-      state.addResource(resource, amount);
-    }
+    if (amount !== 0) state.addResource(resource, amount);
   }
 
-  state.stats.totalGoldEarned += production.gold;
+  const knowledge = socialEffect(state, 'knowledgePerDay');
+  if (knowledge !== 0) state.addResource('knowledge', knowledge);
 }
 
 /**
  * Сбор налогов за день.
- *
- * Доход идёт от жителей, а не от производства. Рынки не приносят золота
- * рабочими — они добавляют к сбору с каждого жителя.
+ * Доход идёт от жителей, а не от работы.
  */
 export function applyTaxIncome(state) {
   const income = computeTaxIncome(state);
@@ -231,10 +298,8 @@ export function applyTaxIncome(state) {
 
 /**
  * Автоназначение рабочих.
- *
- * Итерация идёт по порядку объявления зданий в BALANCE.buildings, поэтому при
- * нехватке людей слоты забирают более ранние типы — поведение прототипа
- * сохранено. Возвращает число назначенных рабочих.
+ * Итерация идёт по порядку объявления зданий, поэтому при нехватке людей
+ * слоты забирают более ранние типы. Возвращает число назначенных рабочих.
  */
 export function autoAssignWorkers(state) {
   let assigned = 0;

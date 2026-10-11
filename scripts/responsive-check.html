@@ -76,7 +76,7 @@ for (const size of WIDTHS) {
   check(clippedMeters.length === 0, `${size.w}px: текст в показателях не обрезан`,
         clippedMeters.join(', ') || 'нет');
 
-  const cards = [...doc.querySelectorAll('.res')];
+  const cards = [...doc.querySelectorAll('.res:not([hidden])')];
   const rows = new Set(cards.map((n) => Math.round(n.getBoundingClientRect().top))).size;
   check(rows === 1, `${size.w}px: ресурсы в одну строку`, `строк: ${rows}`);
 

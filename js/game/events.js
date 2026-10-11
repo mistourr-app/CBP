@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { BALANCE } from '../balance.js';
+import { currentFoodKey, socialEffect } from './economy.js';
 
 const DEFS = BALANCE.events.definitions;
 
@@ -37,7 +38,7 @@ export function availableEvents(state) {
 
     if (def.foodBelowPopulationMultiplier != null) {
       const threshold = state.population * def.foodBelowPopulationMultiplier;
-      if (state.resource('food') >= threshold) continue;
+      if (state.resource(currentFoodKey(state)) >= threshold) continue;
     }
 
     if (def.requiresBuildings?.some((key) => state.buildingCount(key) <= 0)) continue;
@@ -78,8 +79,9 @@ export function trigger(state, id, rng) {
       const foodCost = rng.int(def.foodCost.min, def.foodCost.max);
       const goldGain = rng.int(def.goldGain.min, def.goldGain.max);
 
-      if (state.resource('food') >= foodCost) {
-        state.addResource('food', -foodCost);
+      const foodKey = currentFoodKey(state);
+      if (state.resource(foodKey) >= foodCost) {
+        state.addResource(foodKey, -foodCost);
         state.addResource('gold', goldGain);
         state.stats.tradesCompleted += 1;
         note.text = `Купеческий караван! +${goldGain} золота, -${foodCost} еды`;
@@ -92,7 +94,7 @@ export function trigger(state, id, rng) {
     case 'bandits': {
       const strength = def.strengthBase + Math.floor(state.day * def.strengthPerDays);
       const defense =
-        state.buildingCount('towers') * def.towerDefense +
+        socialEffect(state, 'guardDefense') +
         state.population / def.populationDefenseDivisor;
 
       if (defense > strength * def.defendRatio) {
@@ -123,9 +125,8 @@ export function trigger(state, id, rng) {
         state.population * (severity * (def.lossPercentMax - def.lossPercentMin) + def.lossPercentMin),
       );
 
-      const plagueMult = BALANCE.technologies.education.lossMult.plague;
-      if (state.hasTechnology('education')) deaths = loss(state, deaths * plagueMult);
-
+      // Больницы и образование спасают часть жителей — числом, не долей
+      deaths = Math.max(0, deaths - socialEffect(state, 'epidemicLossReduction'));
       deaths = Math.min(deaths, state.population);
       state.addResource('population', -deaths);
       state.setHappiness(state.happiness - def.happinessLoss);
@@ -137,16 +138,17 @@ export function trigger(state, id, rng) {
 
     case 'harvest': {
       const gain = rng.int(def.foodGain.min, def.foodGain.max);
-      state.addResource('food', gain);
+      state.addResource(currentFoodKey(state), gain);
       note.text = `Урожайный год! +${gain} еды`;
       break;
     }
 
     case 'blizzard': {
-      const foodLost = Math.min(def.foodLossMax, state.resource('food'));
+      const foodKey = currentFoodKey(state);
+      const foodLost = Math.min(def.foodLossMax, state.resource(foodKey));
       const woodLost = Math.min(def.woodLossMax, state.resource('wood'));
 
-      state.addResource('food', -foodLost);
+      state.addResource(foodKey, -foodLost);
       state.addResource('wood', -woodLost);
       state.setHappiness(state.happiness - def.happinessLoss);
 
@@ -165,7 +167,7 @@ export function trigger(state, id, rng) {
       // при -2 против допустимого -1 сила бунта равна 1.
       const rebellion = def.suppressionHappinessBase - state.happiness;
       const suppression =
-        state.buildingCount('towers') * def.suppressionTower +
+        socialEffect(state, 'suppressionGuard') +
         state.population * def.suppressionPerPopulationHalf;
 
       if (suppression > rebellion) {
@@ -186,8 +188,7 @@ export function trigger(state, id, rng) {
     case 'siege': {
       const enemy = def.enemyStrengthBase + Math.floor(state.day * def.enemyStrengthPerDays);
       const defense =
-        state.buildingCount('walls') * def.wallDefense +
-        state.buildingCount('towers') * def.towerDefense +
+        socialEffect(state, 'guardDefense') +
         state.population / def.populationDefenseDivisor;
 
       if (defense > enemy) {

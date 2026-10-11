@@ -32,7 +32,7 @@ function instancePositions(mesh) {
 describe('раскладка', () => {
   it('здания получают конечные координаты', () => {
     const city = makeCity();
-    city.sync({ houses: 12, farms: 4, temples: 2, towers: 3, markets: 1 });
+    city.sync({ houses: 12, farms: 4, taverns: 2, guard: 3, markets: 1 });
 
     for (const [key, mesh] of city.meshes) {
       assert.ok(mesh.count > 0, `${key}: ни одного здания`);
@@ -47,7 +47,7 @@ describe('раскладка', () => {
     const city = makeCity();
     city.sync({
       houses: 20, farms: 5, lumberMills: 3, quarries: 2,
-      markets: 2, temples: 2, schools: 1, towers: 2,
+      markets: 2, taverns: 2, school: 1, guard: 2,
     });
 
     const taken = new Map();
@@ -80,7 +80,7 @@ describe('раскладка', () => {
   it('раскладка детерминирована: одна застройка — одна карта', () => {
     const first = makeCity();
     const second = makeCity();
-    const buildings = { houses: 15, farms: 4, markets: 1, temples: 1 };
+    const buildings = { houses: 15, farms: 4, markets: 1, taverns: 1 };
 
     first.sync(buildings);
     second.sync(buildings);
@@ -119,7 +119,7 @@ describe('раскладка', () => {
 describe('геометрия', () => {
   it('у каждого здания есть вершинные цвета', () => {
     const city = makeCity();
-    city.sync({ houses: 3, temples: 1 });
+    city.sync({ houses: 3, taverns: 1 });
 
     for (const [key, mesh] of city.meshes) {
       const geometry = mesh.geometry;

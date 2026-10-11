@@ -61,7 +61,7 @@ function distanceToNearestStreet(coordinate) {
 
 const SAMPLE = {
   houses: 30, farms: 8, lumberMills: 5, quarries: 4,
-  markets: 3, temples: 3, schools: 2, walls: 2, towers: 3,
+  markets: 3, taverns: 3, school: 2, guard: 2, guard: 3,
 };
 
 describe('улицы не пересекают застройку', () => {
@@ -145,7 +145,7 @@ describe('кварталы', () => {
   });
 
   it('типы зданий перемежаются, а не собраны в отдельные районы', () => {
-    const city = makeCity({ houses: 24, farms: 12, temples: 6 });
+    const city = makeCity({ houses: 24, farms: 12, taverns: 6 });
 
     const kindsAt = [];
     for (const [key, mesh] of city.meshes) {

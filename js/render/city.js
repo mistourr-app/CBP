@@ -15,7 +15,10 @@
 // ============================================================================
 
 import * as THREE from '../../vendor/three.module.min.js';
-import { BUILDING_KEYS } from '../balance.js';
+import { BALANCE, BUILDING_KEYS } from '../balance.js';
+
+// Дороги рисуются улицами (roadsFor), отдельной модели не имеют
+const VISUAL_KEYS = BUILDING_KEYS.filter((key) => BALANCE.buildings[key].visual !== false);
 import { COLOR } from './palette.js';
 
 // ---------------------------------------------------------------------------
@@ -283,6 +286,12 @@ class CityLayout {
 // Описания зданий: геометрия и материал каждой части
 // ---------------------------------------------------------------------------
 
+function fallbackModel() {
+  const geometry = new THREE.BoxGeometry(4.2, 2.6, 4.2);
+  geometry.translate(0, 1.3, 0);
+  return { parts: [{ geometry, color: 0x9a8f7a }] };
+}
+
 function defineModels() {
   const box = (w, h, d, color, y = h / 2) => {
     const g = new THREE.BoxGeometry(w, h, d);
@@ -326,34 +335,6 @@ function defineModels() {
         box(6.0, 3.0, 4.6, 0xb5794a),
         { geometry: new THREE.BoxGeometry(6.2, 0.22, 5.0), color: 0x8f4d33, offsetY: 3.5 },
         { ...box(1.2, 1.8, 0.12, 0xffdca0, 1.5), window: true },
-      ],
-    },
-    temples: {
-      parts: [
-        box(5.6, 3.4, 4.6, 0xe6dcc2),
-        box(4.2, 1.4, 3.4, 0xd8ccae, 4.1),
-        { geometry: new THREE.ConeGeometry(2.8, 2.6, 8), color: 0xd8a93a, offsetY: 6.1 },
-      ],
-    },
-    schools: {
-      parts: [
-        box(5.6, 2.8, 4.0, 0xc9a066),
-        { geometry: new THREE.BoxGeometry(6.0, 0.2, 4.4), color: 0x8a6a3f, offsetY: 3.2 },
-        { ...box(1.6, 1.0, 0.12, 0xbfe0ff, 1.8), window: true },
-      ],
-    },
-    walls: {
-      // Стена не должна вылезать на проезжую часть, поэтому её ширина
-      // задаётся от габарита участка, а не от размера клетки
-      parts: [
-        { geometry: new THREE.BoxGeometry(PLOT * 0.9, 3.0, 1.2), color: 0x8a8f9c },
-      ],
-    },
-    towers: {
-      parts: [
-        { geometry: new THREE.CylinderGeometry(1.9, 2.3, 0.8, 10), color: 0x7c8290, offsetY: 0.4 },
-        { geometry: new THREE.CylinderGeometry(1.3, 1.5, 7.0, 10), color: 0x9aa0ad, offsetY: 4.3 },
-        { geometry: new THREE.ConeGeometry(1.9, 2.4, 10), color: 0x5d6470, offsetY: 9.0 },
       ],
     },
   };
@@ -408,7 +389,7 @@ export class CityView {
   sync(buildings) {
     const additions = [];
 
-    for (const key of BUILDING_KEYS) {
+    for (const key of VISUAL_KEYS) {
       const target = buildings[key] ?? 0;
       const current = this.counts[key] ?? 0;
       if (current === target) continue;
@@ -529,7 +510,8 @@ export class CityView {
       previousWindows?.dispose();
     }
 
-    const model = this.models[key];
+    // У зданий без своей модели — простой куб, чтобы новые типы не ломали сцену
+    const model = this.models[key] ?? fallbackModel();
     const solidParts = model.parts.filter((part) => !part.window);
     const windowParts = model.parts.filter((part) => part.window);
 

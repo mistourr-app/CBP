@@ -60,14 +60,13 @@ describe('состав выбора', () => {
   it('подпись стоимости не содержит ошибок склонения', () => {
     const { state, engine, rng } = freshDay();
     setup(state, {
-      buildings: { houses: 8, farms: 3, lumberMills: 3, quarries: 3, markets: 2, temples: 3, schools: 1, walls: 1 },
+      buildings: { houses: 8, farms: 3, lumberMills: 3, quarries: 3, markets: 2, taverns: 1, well: 1 },
     });
     state.setResource('gold', 100000);
     state.setResource('wood', 100000);
     state.setResource('stone', 100000);
     state.setResource('food', 100000);
     state.setResource('knowledge', 100000);
-    state.setResource('faith', 100000);
     state.setResource('population', 80);
 
     for (let day = 1; day <= BALANCE.choices.priority.length; day += 1) {
@@ -89,15 +88,17 @@ describe('доступность', () => {
     const { state, engine, rng } = freshDay();
     const ids = generateChoices(engine, rng).map((c) => c.id);
 
-    // На старте доступны только дом и производственные здания
-    assert.ok(!ids.includes('build:temples'), 'храм открыт при 1 доме');
-    assert.ok(!ids.includes('build:markets'), 'рынок открыт при 0 фермах');
-    assert.ok(!ids.includes('build:walls'), 'стена открыта при 1 доме');
+    // На старте доступно только то, что строится на первом уровне
+    assert.ok(ids.includes('build:farms'), 'ферма должна быть на первом уровне');
+    assert.ok(!ids.includes('build:markets'), 'рынок — второй уровень, не первый');
+    assert.ok(!ids.includes('build:taverns'), 'таверна — второй уровень, не первый');
+    assert.ok(!ids.includes('build:sawmills'), 'пилорама — второй уровень');
   });
 
-  it('открывает рынок после первой фермы', () => {
+  it('открывает рынок на втором уровне', () => {
     const { state, engine, rng } = freshDay();
-    setup(state, { buildings: { farms: 1 } });
+    state.data.tier = 2;
+    setup(state, { resources: { gold: 500 } });
     state.setResource('population', 30);
 
     let seenMarket = false;
@@ -105,7 +106,16 @@ describe('доступность', () => {
       state.data.day = day;
       seenMarket = generateChoices(engine, rng).some((c) => c.id === 'build:markets');
     }
-    assert.ok(seenMarket, 'рынок так и не появился');
+    assert.ok(seenMarket, 'рынок так и не появился на втором уровне');
+  });
+
+  it('на втором уровне предлагает переход, когда есть требования', () => {
+    const { state, engine } = freshDay();
+    state.data.tier = 1;
+    setup(state, { resources: { wood: 100, stone: 100, food: 100 } });
+
+    const ids = engine.availableActions().map((a) => a.id);
+    assert.ok(ids.includes('tier:up'), 'переход должен предлагаться с требованиями');
   });
 
   it('помечает недоступные по деньгам действия как недоступные', () => {
@@ -138,12 +148,10 @@ describe('доступность', () => {
 describe('достижимость всех зданий', () => {
   it('за цикл дней показывается каждое открытое здание', () => {
     const { state, engine, rng } = freshDay();
-    // Состояние, в котором открыто всё
+    // Второй уровень: открыто всё, что строится на нём
+    state.data.tier = 2;
     setup(state, {
-      buildings: {
-        houses: 8, farms: 3, lumberMills: 2, quarries: 2,
-        markets: 1, temples: 1, schools: 1, walls: 1,
-      },
+      buildings: { houses: 8, farms: 3, lumberMills: 2, quarries: 2, markets: 1, taverns: 1 },
     });
     state.setResource('gold', 100000);
     state.setResource('wood', 100000);
@@ -158,7 +166,8 @@ describe('достижимость всех зданий', () => {
       for (const choice of generateChoices(engine, rng)) seen.add(choice.id);
     }
 
-    for (const key of ['farms', 'lumberMills', 'quarries', 'markets', 'temples', 'schools', 'walls']) {
+    const expected = ['sawmills', 'brickworks', 'mills', 'weavings', 'markets', 'taverns', 'fireBrigades'];
+    for (const key of expected) {
       assert.ok(seen.has(`build:${key}`), `${key} не показывался за полный цикл`);
     }
   });

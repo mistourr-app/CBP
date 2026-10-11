@@ -26,9 +26,27 @@ import { makeSession, setup } from './helpers.js';
 describe('производство', () => {
   it('пустое поселение ничего не производит', () => {
     const { state } = makeSession();
-    assert.deepEqual(computeProduction(state), {
-      gold: 0, food: 0, wood: 0, stone: 0, faith: 0, knowledge: 0,
-    });
+    for (const [resource, amount] of Object.entries(computeProduction(state))) {
+      assert.equal(amount, 0, resource);
+    }
+  });
+
+  it('производственные здания работают только на своём уровне', () => {
+    const { state } = makeSession();
+    // Лесопилка — уровень 1. На уровне 2 она не производит и не требует рабочих
+    setup(state, { buildings: { lumberMills: 2 }, workers: { lumberMills: 4 } });
+    state.data.tier = 2;
+
+    assert.equal(computeProduction(state).wood, 0);
+    assert.equal(state.workerCapacity('lumberMills'), 0);
+  });
+
+  it('социальные здания эффектов не теряют при переходе уровня', () => {
+    const { state } = makeSession();
+    setup(state, { buildings: { taverns: 1 } });
+    state.data.tier = 4;
+
+    assert.equal(computeHappiness(state), BALANCE.taxes[2].happinessBase + 1);
   });
 
   it('производит по количеству рабочих, а не по зданиям', () => {
@@ -64,7 +82,7 @@ describe('производство', () => {
     assert.ok(bySeason.summer > bySeason.spring, 'летом больше, чем весной');
   });
 
-  it('технологии умножают производство', () => {
+  it('технология добавляет штуки к выработке каждого здания', () => {
     const { state } = makeSession();
     setup(state, { buildings: { farms: 1 }, workers: { farms: 2 } });
 
@@ -72,10 +90,10 @@ describe('производство', () => {
     state.technologies.advancedFarming = true;
     const after = computeProduction(state).food;
 
-    assert.equal(after, Math.floor(before * 1.5));
+    assert.equal(after, before + BALANCE.technologies.advancedFarming.productionBonus.amount);
   });
 
-  it('настроение народа прибавляет к производству', () => {
+  it('счастье +N добавляет по N к выработке каждого здания', () => {
     const { state } = makeSession();
     setup(state, { buildings: { farms: 2 }, workers: { farms: 4 } });
 
@@ -85,16 +103,19 @@ describe('производство', () => {
     state.setHappiness(2);
     const joyful = computeProduction(state).food;
 
-    assert.ok(joyful > neutral, 'при счастье +2 должно производиться больше');
-    assert.equal(joyful, Math.floor(neutral * BALANCE.happiness.prodMult[2]));
+    // Два здания, по +2 штуки на каждое
+    assert.equal(joyful - neutral, 2 * 2);
   });
 
-  it('на золото настроение не влияет: золото идёт от налога', () => {
+  it('отрицательное счастье не уменьшает выработку', () => {
     const { state } = makeSession();
-    setup(state, { buildings: { markets: 2 }, workers: { markets: 2 } });
+    setup(state, { buildings: { farms: 2 }, workers: { farms: 4 } });
 
+    state.setHappiness(0);
+    const neutral = computeProduction(state).food;
     state.setHappiness(-2);
-    assert.equal(computeProduction(state).gold, 0);
+
+    assert.equal(computeProduction(state).food, neutral);
   });
 });
 
@@ -111,16 +132,13 @@ describe('уровень счастья', () => {
     }
   });
 
-  it('поднимается на шаг с храмом и «Религией»', () => {
+  it('поднимается на шаг за каждую таверну', () => {
     const { state } = makeSession();
     state.data.taxRateIndex = 3;           // 40% -> база -1
     assert.equal(computeHappiness(state), -1);
 
-    setup(state, { buildings: { temples: 1 } });
-    assert.equal(computeHappiness(state), -1, 'храм без «Религии» ничего не даёт');
-
-    state.technologies.religion = true;
-    assert.equal(computeHappiness(state), -1 + BALANCE.happiness.religionBonus);
+    setup(state, { buildings: { taverns: 1 } });
+    assert.equal(computeHappiness(state), 0);
   });
 
   it('не выходит за пределы', () => {
@@ -130,8 +148,7 @@ describe('уровень счастья', () => {
     assert.equal(computeHappiness(state), -2);
 
     state.data.taxRateIndex = 0;           // 10% -> база +2
-    state.technologies.religion = true;
-    setup(state, { buildings: { temples: 3 } });
+    setup(state, { buildings: { taverns: 3 } });
     assert.equal(computeHappiness(state), 2, 'выше +2 не подняться');
   });
 
@@ -181,7 +198,7 @@ describe('доход от налога', () => {
     setup(state, { buildings: { markets: 3 } });
     const withMarkets = computeTaxIncome(state);
 
-    const bonus = BALANCE.income.marketGoldPerCitizen * 10 * 3;
+    const bonus = BALANCE.buildings.markets.effects.goldPerCitizen * 10 * 3;
     assert.equal(withMarkets, bare + bonus);
   });
 

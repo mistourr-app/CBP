@@ -45,7 +45,7 @@ scene.add(ground);
 
 const city = new CityView(scene, new Rng(1));
 const scale = Number(new URLSearchParams(location.search).get('n') ?? 1);
-const base = { houses: 28, farms: 6, lumberMills: 4, quarries: 3, markets: 3, temples: 3, schools: 2, walls: 2, towers: 3 };
+const base = { houses: 28, farms: 6, lumberMills: 4, quarries: 3, markets: 3, taverns: 3, school: 2, guard: 2, guard: 3 };
 city.sync(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, Math.round(v * scale)])));
 
 const size = new THREE.Vector3();

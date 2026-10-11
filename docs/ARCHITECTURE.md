@@ -272,7 +272,7 @@ npm run serve:start
 
 ## 10. Сохранения
 
-Ключ `cbp.save.v3` в localStorage. Внутри — `schema` из
+Ключ `cbp.save.v4` в localStorage. Внутри — `schema` из
 `BALANCE.meta.schema`.
 
 Правила:

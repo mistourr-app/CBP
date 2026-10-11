@@ -9,6 +9,7 @@
 <iframe id="game" src="../index.html" style="width:390px;height:780px;border:1px solid #444"></iframe>
 <pre id="out">загрузка…</pre>
 <script type="module">
+import { BALANCE } from '../js/balance.js';
 // Разбор интерфейса в настоящем браузере: раскрытие хроники,
 // порядок действий, отсутствие лимита населения.
 const log = [];
@@ -53,7 +54,7 @@ try {
         'ставка налога видна вместе с подписью', meters[2]);
 
   // -- Одинаковая высота карточек ----------------------------------------
-  const cards = [...doc.querySelectorAll('.meter, .res')];
+  const cards = [...doc.querySelectorAll('.meter, .res:not([hidden])')];
   const boxes = cards.map((n) => ({
     cls: n.className.replace('meter--', 'meter.').replace('res--', 'res.'),
     h: Math.round(n.getBoundingClientRect().height),
@@ -64,8 +65,12 @@ try {
         `высоты: ${unique.join(', ')} | ${boxes.map((b) => `${b.cls}=${b.h}`).join(', ')}`);
 
   // -- Ресурсы в одну строку ----------------------------------------------
-  const cards2 = [...doc.querySelectorAll('.res')];
-  check(cards2.length === 6, 'ресурсов шесть', String(cards2.length));
+  const cards2 = [...doc.querySelectorAll('.res:not([hidden])')];
+  const tierNow = app.session.state.tier;
+  const expectedVisible = BALANCE.resourceOrder
+    .filter((key) => BALANCE.resources[key].tier === 0 || BALANCE.resources[key].tier === tierNow);
+  check(cards2.length === expectedVisible.length, 'видимых ресурсов столько, сколько на уровне',
+        `карточек ${cards2.length}, ожидалось ${expectedVisible.length}`);
 
   const tops = [...new Set(cards2.map((n) => Math.round(n.getBoundingClientRect().top)))];
   check(tops.length === 1, 'ресурсы в одну строку', `строк: ${tops.length}`);
@@ -80,8 +85,8 @@ try {
   //
   // Порядок карточек совпадает с BALANCE.resourceOrder. Цель есть только
   // у ресурсов, которые нужны для перехода: дерево, камень и еда.
-  const ORDER = ['gold', 'food', 'wood', 'stone', 'faith', 'knowledge'];
-  const WITH_GOAL = new Set(['food', 'wood', 'stone']);
+  const ORDER = expectedVisible;
+  const WITH_GOAL = new Set(Object.keys(app.session.state.tierDef.requirements ?? {}));
   const goals = cards2.map((n, i) => ({
     key: ORDER[i],
     text: n.querySelector('.res__goal')?.textContent ?? '',

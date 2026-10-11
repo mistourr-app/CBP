@@ -7,7 +7,7 @@
 // ============================================================================
 
 import { BALANCE } from '../balance.js';
-import { computeDaily } from '../game/economy.js';
+import { computeDaily, currentFoodKey, visibleResources } from '../game/economy.js';
 import { el, formatDelta, formatNumber, h } from './dom.js';
 
 const RESOURCE_COLORS = {
@@ -15,13 +15,13 @@ const RESOURCE_COLORS = {
   food: 'var(--c-res-food)',
   wood: 'var(--c-res-wood)',
   stone: 'var(--c-res-stone)',
-  faith: 'var(--c-res-faith)',
   knowledge: 'var(--c-res-knowledge)',
 };
 
 // Пороговые значения уровня предупреждения в панели ресурсов
 const LOW_THRESHOLDS = {
-  food: (state) => state.resource('food') < state.population * BALANCE.population.foodPerCitizenPerDay * 3,
+  // Еда проверяется отдельно по пищевому ресурсу текущего уровня (см. #updateResources)
+  food: (state) => state.resource(currentFoodKey(state)) < state.population * BALANCE.population.foodPerCitizenPerDay * 3,
   gold: (state) => state.resource('gold') < 10,
   wood: (state) => state.resource('wood') < 15,
   stone: (state) => state.resource('stone') < 15,
@@ -196,16 +196,24 @@ export class StatsPanel {
   }
 
   #updateResources(state, daily) {
-    const level = BALANCE.development.levels[BALANCE.development.startLevelIndex];
+    // На каждом уровне видны свои ресурсы; прошлые скрыты и не производятся
+    const visible = new Set(visibleResources(state));
+    this.resourcesRoot.style.gridTemplateColumns = `repeat(${Math.max(1, visible.size)}, minmax(0, 1fr))`;
+
+    const level = state.tierDef;
 
     for (const key of BALANCE.resourceOrder) {
       const { node, value, goal, bar, fill, delta } = this.resourceNodes.get(key);
+      node.hidden = !visible.has(key);
+      if (!visible.has(key)) continue;
+
       const amount = state.resource(key);
 
       value.textContent = formatNumber(amount);
 
-      const perDay = key === 'food'
-        ? daily.production.food - daily.foodConsumption
+      const isFood = key === daily.foodKey;
+      const perDay = isFood
+        ? daily.production[key] - daily.foodConsumption
         : daily.production[key];
 
       delta.textContent = formatDelta(perDay);
@@ -215,7 +223,7 @@ export class StatsPanel {
 
       this.#updateGoal(node, goal, bar, fill, level, key, amount);
 
-      const isLow = LOW_THRESHOLDS[key]?.(state) ?? false;
+      const isLow = (isFood ? LOW_THRESHOLDS.food(state) : LOW_THRESHOLDS[key]?.(state)) ?? false;
       node.classList.toggle('res--empty', isLow && amount <= 0);
     }
   }
@@ -223,6 +231,7 @@ export class StatsPanel {
   /** Показывает «собрано из целевого» для ресурсов, нужных для перехода. */
   #updateGoal(node, goal, bar, fill, level, key, amount) {
     const target = level?.requirements?.[key];
+    // На последнем уровне требований нет — цели не показываем
 
     if (!target) {
       goal.textContent = '';
