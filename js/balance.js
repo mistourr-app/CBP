@@ -12,20 +12,47 @@
 // Вспомогательные разделы вынесены отдельно, чтобы значения не дублировались:
 // например, прибавка счастья за дом используется и здесь, и в постройке.
 const HAPPINESS = {
-  start: 80,
-  min: 0,
-  max: 100,
-  dailyDecay: 1,
-  starvationPerDeath: 5,
-  unpaidMaintenancePenalty: 5,
-  perHouse: 5,
-  // Этап 2 (SYSTEMS_SPEC §2): счастье станет дискретным уровнем -2..+2.
-  // Значения подготовлены заранее.
-  phase2Levels: {
-    leavePerDayHigh: 5,
-    leavePerDayLow: 2,
-    starvationOutflow: 3,
-    prodMult: { '-2': 1, '-1': 1, 0: 1, 1: 1.1, 2: 1.25 },
+  /**
+   * Счастье — дискретный уровень, а не шкала 0–100.
+   *
+   * Уровень вычисляется каждый день: база от ставки налога плюс
+   * модификаторы (социальные здания, события), с ограничением по краям.
+   *
+   *   −2  народ бежит, уходят 5 человек в день
+   *   −1  недовольство, уходят 2 человека в день
+   *    0  нейтрально
+   *   +1  прирост производства 10%
+   *   +2  прирост производства 25%
+   *
+   * Приток жителей — только через застройку домов и события.
+   * Повышенное счастье даёт прирост производства, пониженное — отток.
+   */
+  range: [-2, 2],
+  start: 0,
+
+  leavePerDayHigh: 5,   // столько уходит в день при −2
+  leavePerDayLow: 2,    // столько уходит в день при −1
+  starvationOutflow: 3, // дополнительный отток при нехватке еды
+
+  // Множитель производства по уровню счастья
+  prodMult: { '-2': 1, '-1': 1, 0: 1, 1: 1.1, 2: 1.25 },
+
+  /**
+   * Модификаторы уровня счастья сверх ставки налога.
+   *
+   * Пока ставят не сами по себе, а вместе со зданием: храм без
+   * «Религии» ничего не даёт. В подэтапе 2.2 сюда добавятся социальные
+   * здания — церковь, таверна, площадь.
+   */
+  religionBonus: 1,
+
+  // Подписи уровня для интерфейса
+  levels: {
+    '-2': { icon: '😡', label: 'Народ бежит', tone: 'danger' },
+    '-1': { icon: '😟', label: 'Недовольны', tone: 'warn' },
+    0: { icon: '😐', label: 'Ровно', tone: 'calm' },
+    1: { icon: '🙂', label: 'Довольны', tone: 'good' },
+    2: { icon: '😄', label: 'Счастливы', tone: 'good' },
   },
 };
 
@@ -43,14 +70,32 @@ const POPULATION = {
   residentsPerHouse: 1,
 };
 
+/**
+ * Налоги — постоянная политика игрока, а не действие каждого хода.
+ *
+ * Ставка задаёт и доход, и базовое настроение народа: это и есть
+ * налоговый маятник. Поднял налог — больше золота, но народ недоволен
+ * и уходит, а вместе с ним падает и доход.
+ */
+const TAXES = [
+  { rate: 0.10, happinessBase:  2, goldPerCitizen: 1 },
+  { rate: 0.20, happinessBase:  1, goldPerCitizen: 2 },
+  { rate: 0.30, happinessBase:  0, goldPerCitizen: 3 },
+  { rate: 0.40, happinessBase: -1, goldPerCitizen: 4 },
+  { rate: 0.50, happinessBase: -2, goldPerCitizen: 5 },
+];
+
 export const BALANCE = {
   meta: {
-    schema: 2,
-    balanceVersion: 1,
+    // Версия 3: счастье стало уровнем и ушло из ресурсов, у состояния
+    // появилась ставка налога. Сохранения версии 2 несовместимы и
+    // отбрасываются — партия начинается заново.
+    schema: 3,
+    balanceVersion: 2,
     // Метка сборки интерфейса. Показывается в плашке города, чтобы можно
     // было сразу понять, что на экране свежая версия, а не закешированная
     // старая. Поднимается при правках раскладки и внешнего вида.
-    build: '2026-10-11 · d',
+    build: '2026-10-11 · e',
   },
 
   // --------------------------------------------------------------------------
@@ -72,7 +117,6 @@ export const BALANCE = {
       faith: 50,
       knowledge: 10,
       population: 10,
-      happiness: HAPPINESS.start,
     },
     buildings: { houses: 1 },
   },
@@ -88,9 +132,12 @@ export const BALANCE = {
     food:      { name: 'Еда',       icon: '🍞', isFood: true, unit: { one: 'еды', few: 'еды', many: 'еды' } },
     wood:      { name: 'Древесина', icon: '🪵', unit: { one: 'древесины', few: 'древесины', many: 'древесины' } },
     stone:     { name: 'Камень',    icon: '🪨', unit: { one: 'камень', few: 'камня', many: 'камней' } },
-    faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few: 'веры', many: 'веры' } },
-    knowledge: { name: 'Знания',    icon: '🧠', unit: { one: 'знание', few: 'знания', many: 'знаний' } },
+faith:     { name: 'Вера',      icon: '✝️', unit: { one: 'веры', few: 'веры', many: 'веры' } },
+      knowledge: { name: 'Знания',    icon: '🧠', unit: { one: 'знание', few: 'знания', many: 'знаний' } },
   },
+
+  /** Вера не копится выше сотни. */
+  faithMax: 100,
 
   // Порядок вывода в панели статистики (население и счастье — не ресурсы)
   resourceOrder: ['gold', 'food', 'wood', 'stone', 'faith', 'knowledge'],
@@ -100,7 +147,8 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   meters: {
     population: { name: 'Население', icon: '👥' },
-    happiness:  { name: 'Счастье',   icon: '😊', min: HAPPINESS.min, max: HAPPINESS.max },
+    happiness:  { name: 'Счастье',   icon: '😊', range: HAPPINESS.range },
+    tax:        { name: 'Налог',     icon: '⚖️' },
   },
 
   happiness: HAPPINESS,
@@ -134,7 +182,7 @@ export const BALANCE = {
       produces: null,
       maintenance: 0.1,
       unlock: {},
-      onBuild: { residents: POPULATION.residentsPerHouse, happiness: HAPPINESS.perHouse },
+      onBuild: { residents: POPULATION.residentsPerHouse },
     },
     farms: {
       name: 'Ферма', actionLabel: 'Построить ферму', icon: '🌾',
@@ -163,8 +211,10 @@ export const BALANCE = {
     markets: {
       name: 'Рынок', actionLabel: 'Построить рынок', icon: '🏪',
       cost: { gold: 30, wood: 20, stone: 10 },
-      workers: 3,
-      produces: { gold: 10 },
+      // Рынок больше не производит золото рабочими: золото идёт от налога,
+      // а рынок добавляет к сбору с каждого жителя
+      workers: 1,
+      produces: { wood: 2 },
       maintenance: 0.5,
       unlock: { buildings: { farms: 1 }, freeWorkers: 3 },
     },
@@ -307,14 +357,15 @@ export const BALANCE = {
         goldLossMax: 30,
         populationLossPercent: 0.2,
         populationLossMax: 5,
-        happinessLoss: 20,
+        // События сдвигают уровень на шаг, а не на проценты
+        happinessLoss: 1,
       },
       disease: {
         name: 'Эпидемия', icon: '🤒', kind: 'disaster',
         minPopulation: 30,
         lossPercentMin: 0.05,
         lossPercentMax: 0.35,
-        happinessLoss: 15,
+        happinessLoss: 1,
       },
       harvest: {
         name: 'Урожайный год', icon: '🌾', kind: 'social',
@@ -326,20 +377,21 @@ export const BALANCE = {
         seasons: ['winter'],
         foodLossMax: 20,
         woodLossMax: 15,
-        happinessLoss: 10,
+        happinessLoss: 1,
       },
       famine_warning: {
         name: 'Запасы еды на исходе', icon: '⚠️', kind: 'warning',
         foodBelowPopulationMultiplier: 3,
-        happinessLoss: 5,
+        happinessLoss: 1,
       },
       revolt: {
         name: 'Волнения', icon: '🔥', kind: 'social',
-        happinessBelow: 30,
-        suppressionHappinessBase: 50,
+        // Волнения возможны, только когда народ уже недоволен (-1 и ниже)
+        happinessBelow: -1,
+        suppressionHappinessBase: -1,
         suppressionTower: 3,
         suppressionPerPopulationHalf: 0.5,
-        happinessGainOnSuccess: 10,
+        happinessGainOnSuccess: 1,
         populationLossPercent: 0.3,
         populationLossMax: 10,
       },
@@ -378,8 +430,8 @@ export const BALANCE = {
       },
       {
         id: 'revolt',
-        when: { happinessMax: 0, populationMin: 6 },
-        reason: 'Жители восстали и изгнали вас из города.',
+        when: { happinessMax: -2, populationMin: 6 },
+        reason: 'Народ восстал и прогнал вас из города.',
         icon: '🔥',
       },
       {
@@ -414,11 +466,15 @@ export const BALANCE = {
       'build:temples', 'build:schools', 'build:walls', 'build:towers',
       'develop:advancedFarming', 'develop:lumberProcessing', 'develop:stoneMasonry',
       'develop:tradeRoutes', 'develop:religion', 'develop:education', 'develop:fortification',
+      // Ставка налога — решение, которое важнее торговли, поэтому налог
+      // стоит раньше неё и предлагается раз в taxChangeEveryDays дней
+      'tax',
       'trade', 'expedition', 'wait',
     ],
     actions: {
       trade:     { label: 'Торговать', icon: '💵' },
       expedition: { label: 'Отправить экспедицию', icon: '🗺️' },
+      tax:       { label: 'Изменить налоги', icon: '⚖️' },
       wait:      { label: 'Подождать', icon: '⏳' },
     },
   },
@@ -443,20 +499,39 @@ export const BALANCE = {
   },
 
   // --------------------------------------------------------------------------
-  // Этап 2: заготовки по SYSTEMS_SPEC.md. Пока кодом не используются,
-  // но место подготовлено, чтобы этап 2 не ломал структуру баланса.
+  // Налоги и доход (SYSTEMS_SPEC §3)
   // --------------------------------------------------------------------------
-  taxes: [
-    { rate: 0.10, happinessBase:  2, goldPerCitizen: 1 },
-    { rate: 0.20, happinessBase:  1, goldPerCitizen: 2 },
-    { rate: 0.30, happinessBase:  0, goldPerCitizen: 3 },
-    { rate: 0.40, happinessBase: -1, goldPerCitizen: 4 },
-    { rate: 0.50, happinessBase: -2, goldPerCitizen: 5 },
-  ],
-  tierTaxMult: [1, 2, 4, 8],
-  development: [],
 
-  maintenance: { base: 1, perDay: 0.001 }, // наследие исходной системы
+  /** Ставка налога по умолчанию: 30% — нейтральное настроение народа. */
+  taxDefaultIndex: 2,
+
+  /**
+   * Как часто предлагается сменить ставку. Налог — постоянная политика,
+   * поэтому он не должен занимать слот каждый ход.
+   */
+  taxChangeEveryDays: 3,
+
+  taxes: TAXES,
+
+  /**
+   * Множитель сбора по тиру населения. После перехода на новый тир
+   * жители платят больше. Используется с 1 на этапе 1.
+   */
+  tierTaxMult: [1, 2, 4, 8],
+
+  /** Подписи ставок для интерфейса. */
+  taxLabels: [
+    'Ничтожный', 'Низкий', 'Обычный', 'Высокий', 'Ярмарка',
+  ],
+
+  /** Доход от налога: золото с одного жителя в день. */
+  income: {
+    /** Надбавка к сбору за каждый рынок, золото с жителя в день. */
+    marketGoldPerCitizen: 1,
+  },
+
+  /** Заготовка под 2.4: уровни развития и тиры ресурсов. */
+  development: [],
 };
 
 // Имена ресурсов, по которым ведётся производство и обслуживание

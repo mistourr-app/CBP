@@ -27,8 +27,13 @@ const LOW_THRESHOLDS = {
   stone: (state) => state.resource('stone') < 15,
 };
 
-const HAPPINESS_WARN = 40;
-const HAPPINESS_DANGER = 20;
+// Уровень счастья — дискретный, от -2 до +2, поэтому и предупреждение
+// задаётся уровнем, а не процентом.
+const MOOD_WARN = -1;
+const MOOD_DANGER = -2;
+
+// Шкала счастья идёт от -2 к +2: делим диапазон на пять шагов.
+const MOOD_STEPS = 5;
 
 export class StatsPanel {
   constructor(session) {
@@ -77,12 +82,28 @@ export class StatsPanel {
       bar,
     );
 
+    const happinessIcon = h('span', { class: 'meter__icon', text: '😊' });
     const happiness = h('div', { class: 'meter meter--happiness' });
-    happiness.append(h('span', { class: 'meter__icon', text: '😊' }), happinessBody);
+    happiness.append(happinessIcon, happinessBody);
 
-    this.meterNodes.set('happiness', { node: happiness, value: happinessValue, fill });
+    this.meterNodes.set('happiness', { node: happiness, icon: happinessIcon, value: happinessValue, fill });
 
-    this.metersRoot.append(people, happiness);
+    // Налог — постоянная политика, а не запас: игрок должен видеть её
+    // всегда, а не только в день, когда её можно менять.
+    const taxValue = h('span', { class: 'meter__value' });
+    const taxSub = h('span', { class: 'meter__sub' });
+    const taxBody = h('div', { class: 'meter__body' });
+    taxBody.append(
+      h('span', { class: 'meter__label', text: 'Налоги' }),
+      taxValue,
+      taxSub,
+    );
+
+    const tax = h('div', { class: 'meter meter--tax' });
+    tax.append(h('span', { class: 'meter__icon', text: '⚖️' }), taxBody);
+    this.meterNodes.set('tax', { node: tax, value: taxValue, sub: taxSub });
+
+    this.metersRoot.append(people, happiness, tax);
   }
 
   #buildResources() {
@@ -134,19 +155,32 @@ export class StatsPanel {
     people.node.classList.toggle('meter--warn', free > 0 && employed > 0);
     people.node.classList.toggle('meter--ok', employed > 0 || state.population <= 1);
 
+    const level = state.happinessLevel;
+    const mood = BALANCE.happiness.levels[String(level)];
+    const [min, max] = BALANCE.happiness.range;
+
     const happiness = this.meterNodes.get('happiness');
-    const percent = Math.round((state.happiness / BALANCE.happiness.max) * 100);
+    happiness.icon.textContent = mood.icon;
+    happiness.value.textContent = mood.label;
 
-    happiness.value.textContent = `${formatNumber(state.happiness)}%`;
-    happiness.node.classList.toggle('meter--ok', state.happiness > HAPPINESS_WARN);
-    happiness.node.classList.toggle('meter--warn',
-      state.happiness <= HAPPINESS_WARN && state.happiness > HAPPINESS_DANGER);
-    happiness.node.classList.toggle('meter--danger', state.happiness <= HAPPINESS_DANGER);
+    happiness.node.classList.toggle('meter--ok', level > MOOD_WARN);
+    happiness.node.classList.toggle('meter--warn', level === MOOD_WARN);
+    happiness.node.classList.toggle('meter--danger', level <= MOOD_DANGER);
 
-    happiness.fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-    happiness.fill.classList.toggle('meter__fill--warn',
-      state.happiness <= HAPPINESS_WARN && state.happiness > HAPPINESS_DANGER);
-    happiness.fill.classList.toggle('meter__fill--danger', state.happiness <= HAPPINESS_DANGER);
+    // От -2 шкала пустая, у +2 полная: так видно и уход, и подъём
+    const share = (level - min) / (max - min);
+    happiness.fill.style.width = `${Math.round(share * 100)}%`;
+    happiness.fill.classList.toggle('meter__fill--warn', level === MOOD_WARN);
+    happiness.fill.classList.toggle('meter__fill--danger', level <= MOOD_DANGER);
+
+    const tax = this.meterNodes.get('tax');
+    const rate = state.taxRate;
+    const moodBase = BALANCE.happiness.levels[String(rate.happinessBase)];
+    const perCitizen = rate.goldPerCitizen * (BALANCE.tierTaxMult[0] ?? 1);
+
+    tax.value.textContent = `${Math.round(rate.rate * 100)}% · ${BALANCE.taxLabels[state.taxRateIndex]}`;
+    tax.sub.textContent = `${formatNumber(perCitizen)} зол. с жителя · ${moodBase.icon} ${moodBase.label.toLowerCase()}`;
+    tax.node.classList.toggle('meter--warn', rate.happinessBase <= MOOD_WARN);
   }
 
   #updateResources(state, daily) {

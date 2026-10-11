@@ -24,8 +24,8 @@ function installStorage() {
   return storage;
 }
 
-const KEY = 'cbp.save.v2';
-const LEGACY_KEY = 'cityBuilderSave';
+const KEY = 'cbp.save.v3';
+const LEGACY_KEYS = ['cbp.save.v2', 'cityBuilderSave'];
 
 describe('формат сохранения', () => {
   let Save;
@@ -48,6 +48,19 @@ describe('формат сохранения', () => {
     assert.equal(restored.state.resources.gold, 777);
   });
 
+  it('старое сохранение не подхватывается и вычищается', () => {
+    const storage = globalThis.__testStorage;
+    const oldKey = LEGACY_KEYS[0];
+    storage.setItem(oldKey, JSON.stringify({ schema: BALANCE.meta.schema - 1, state: {} }));
+
+    // Ключ сменился вместе с форматом, поэтому новое сохранение не видно,
+    // а старое не мешает — его убирает clear при старте партии
+    assert.equal(Save.read(), null);
+
+    Save.clear();
+    assert.equal(storage.getItem(oldKey), null, 'старое сохранение не удалено');
+  });
+
   it('отбрасывает сохранение другой версии схемы', () => {
     const storage = globalThis.__testStorage;
     storage.setItem(KEY, JSON.stringify({ schema: BALANCE.meta.schema - 1, state: {} }));
@@ -64,15 +77,17 @@ describe('формат сохранения', () => {
     assert.equal(storage.getItem(KEY), null);
   });
 
-  it('clear удаляет и текущий, и старый ключ', () => {
+  it('clear удаляет и текущий, и старые ключи', () => {
     const storage = globalThis.__testStorage;
     storage.setItem(KEY, '{}');
-    storage.setItem(LEGACY_KEY, '{}');
+    for (const key of LEGACY_KEYS) storage.setItem(key, '{}');
 
     Save.clear();
 
     assert.equal(storage.getItem(KEY), null);
-    assert.equal(storage.getItem(LEGACY_KEY), null);
+    for (const key of LEGACY_KEYS) {
+      assert.equal(storage.getItem(key), null, `ключ ${key} не удалён`);
+    }
   });
 
   it('возвращает null, если сохранения нет', () => {
@@ -123,9 +138,31 @@ describe('восстановление состояния', () => {
 
   it('держит счастье в допустимых пределах', () => {
     const raw = createInitialState();
-    raw.resources.happiness = 9999;
+    raw.happiness = 99;
 
-    assert.equal(GameState.restore(raw).happiness, BALANCE.happiness.max);
+    assert.equal(GameState.restore(raw).happiness, BALANCE.happiness.range[1]);
+
+    raw.happiness = -99;
+    assert.equal(GameState.restore(raw).happiness, BALANCE.happiness.range[0]);
+  });
+
+  it('восстанавливает ставку налога и приводит её к допустимой', () => {
+    const raw = createInitialState();
+    raw.taxRateIndex = 3;
+    assert.equal(GameState.restore(raw).taxRateIndex, 3);
+
+    raw.taxRateIndex = 99;
+    assert.equal(GameState.restore(raw).taxRateIndex, BALANCE.taxes.length - 1);
+
+    raw.taxRateIndex = -5;
+    assert.equal(GameState.restore(raw).taxRateIndex, 0);
+  });
+
+  it('оставляет ставку по умолчанию, если поле потерялось', () => {
+    const raw = createInitialState();
+    delete raw.taxRateIndex;
+
+    assert.equal(GameState.restore(raw).taxRateIndex, BALANCE.taxDefaultIndex);
   });
 
   it('переживает отсутствие поля статистики', () => {

@@ -38,12 +38,19 @@ try {
 
   // -- Показатели ---------------------------------------------------------
   const meters = [...doc.querySelectorAll('.meter')].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
-  check(meters.length === 2, 'показателей ровно два', meters.join(' | '));
+  check(meters.length === 3, 'показателей ровно три', meters.join(' | '));
   check(/Население/.test(meters[0]), 'есть население', meters[0]);
   check(!/рабочие/i.test(doc.querySelector('#meters').textContent) || /работают/.test(meters[0]),
         'занятость внутри карточки населения', meters[0]);
   check(!/\/\s*\d+/.test(meters[0]), 'лимита населения не видно', meters[0]);
   check(/работают|свободн|не работает/.test(meters[0]), 'видно, сколько работает', meters[0]);
+
+  // Счастье — уровень словами, а не проценты: «80%» вводит в заблуждение,
+  // потому что уровень не измеряется ни в чём.
+  check(/Счастье/.test(meters[1]) && !/%/.test(meters[1]),
+        'счастье показано уровнем, не процентом', meters[1]);
+  check(/Налог/.test(meters[2]) && /%/.test(meters[2]),
+        'ставка налога видна вместе с подписью', meters[2]);
 
   // -- Одинаковая высота карточек ----------------------------------------
   const cards = [...doc.querySelectorAll('.meter, .res')];

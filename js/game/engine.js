@@ -19,10 +19,13 @@ import { BALANCE } from '../balance.js';
 import { EVENTS } from '../core/bus.js';
 import {
   applyConsumption,
+  applyHappinessOutflow,
   applyPopulationGrowth,
   applyProduction,
+  applyTaxIncome,
   autoAssignWorkers,
   canAfford,
+  computeHappiness,
   spend,
 } from './economy.js';
 import { rollDailyEvent } from './events.js';
@@ -104,7 +107,28 @@ export class Engine {
       affordable: canAfford(state, expeditionCost),
     });
 
+    // Ставка налога — постоянная политика, поэтому предлагается не
+    // каждый день, а раз в taxChangeEveryDays: иначе она занимала бы
+    // слот постоянно и игрок не смог бы ею пользоваться.
+    if (this.#isTaxChangeDue(state)) {
+      const rate = state.taxRate;
+      out.push({
+        id: 'tax',
+        group: 'tax',
+        label: BALANCE.choices.actions.tax.label,
+        icon: BALANCE.choices.actions.tax.icon,
+        cost: {},
+        affordable: true,
+        detail: `сейчас ${BALANCE.taxLabels[state.data.taxRateIndex]} · ${Math.round(rate.rate * 100)}%`,
+      });
+    }
+
     return out;
+  }
+
+  /** Пора ли предлагать смену налога. */
+  #isTaxChangeDue(state) {
+    return state.day % BALANCE.taxChangeEveryDays === 0;
   }
 
   isBuildingUnlocked(key) {
@@ -135,6 +159,8 @@ export class Engine {
         return this.#trade();
       case 'expedition':
         return this.#expedition();
+      case 'tax':
+        return this.#changeTax();
       default:
         break;
     }
@@ -144,6 +170,36 @@ export class Engine {
     if (kind === 'develop') return this.#develop(key);
 
     return { ok: false, note: null };
+  }
+
+  /**
+   * Смена ставки налога: перебор к следующей ставке по кругу.
+   *
+   * Игрок не задаёт точку одним выбором — за ход ставка сдвигается на
+   * ступень. Так решение остаётся в руках игрока, но не требует
+   * отдельного окна настройки в каждом ходе.
+   */
+  #changeTax() {
+    if (!this.#isTaxChangeDue(this.state)) return { ok: false, note: null };
+
+    const next = (this.state.data.taxRateIndex + 1) % BALANCE.taxes.length;
+    this.state.data.taxRateIndex = next;
+
+    const rate = this.state.taxRate;
+    const mood = BALANCE.happiness.levels[String(rate.happinessBase)];
+    const gold = Math.floor(
+      this.state.population * rate.goldPerCitizen * (BALANCE.tierTaxMult[0] ?? 1),
+    );
+
+    return {
+      ok: true,
+      note: {
+        kind: 'trade',
+        icon: '⚖️',
+        text: `Налог ${Math.round(rate.rate * 100)}% (${BALANCE.taxLabels[next]}): `
+          + `${gold} золота в день, ${mood.icon} ${mood.label.toLowerCase()}`,
+      },
+    };
   }
 
   #build(key) {
@@ -266,13 +322,37 @@ export class Engine {
     // 2. Рабочие
     autoAssignWorkers(state);
 
-    // 3. Потребление
+    // 3. Настроение народа: считается заново из ставки налога
+    const moodBefore = state.happinessLevel;
+    state.setHappiness(computeHappiness(state));
+
+    if (state.happinessLevel !== moodBefore) {
+      const def = BALANCE.happiness.levels[String(state.happinessLevel)];
+      this.chronicle.add(state, {
+        kind: state.happinessLevel < 0 ? 'warning' : 'social',
+        icon: def.icon,
+        text: `Народ ${def.label.toLowerCase()}`,
+      });
+    }
+
+    // 4. Потребление: еда и обслуживание
     for (const note of applyConsumption(state)) this.chronicle.add(state, note);
 
-    // 4. Производство
+    // 5. Производство и сбор налогов
     applyProduction(state);
+    applyTaxIncome(state);
 
-    // 5. Прирост населения
+    // 6. Отток из-за недовольства
+    const leaving = applyHappinessOutflow(state);
+    if (leaving > 0) {
+      this.chronicle.add(state, {
+        kind: 'warning',
+        icon: '🚪',
+        text: `Недовольные покидают поселение: -${leaving}`,
+      });
+    }
+
+    // 7. Прирост населения
     const arrived = applyPopulationGrowth(state);
     if (arrived) {
       this.chronicle.add(state, {
@@ -282,10 +362,10 @@ export class Engine {
       });
     }
 
-    // 6. Новосёлы сразу становятся рабочей силой
+    // 8. Новосёлы сразу становятся рабочей силой
     autoAssignWorkers(state);
 
-    // 7. Событие дня
+    // 9. Событие дня
     const eventNote = rollDailyEvent(state, this.rng);
     if (eventNote) this.chronicle.add(state, eventNote);
 
@@ -293,7 +373,7 @@ export class Engine {
     // согласованному виду перед проверкой окончания партии
     state.normalize();
 
-    // 8. Условия окончания
+    // 10. Условия окончания
     state.stats.daysSurvived = state.day;
     this.#checkEndConditions();
 

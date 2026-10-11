@@ -7,6 +7,8 @@ import { BALANCE } from '../js/balance.js';
 import { formatResource, plural } from '../js/game/content.js';
 import {
   applyConsumption,
+  applyHappinessOutflow,
+  applyTaxIncome,
   applyPopulationGrowth,
   applyProduction,
   autoAssignWorkers,
@@ -14,7 +16,10 @@ import {
   computeDaily,
   computeFoodConsumption,
   computeMaintenance,
+  computeHappiness,
+  computeHappinessOutflow,
   computeProduction,
+  computeTaxIncome,
   spend,
 } from '../js/game/economy.js';
 import { makeSession, setup } from './helpers.js';
@@ -71,12 +76,161 @@ describe('производство', () => {
     assert.equal(after, Math.floor(before * 1.5));
   });
 
-  it('религия даёт счастье за рабочего в храме', () => {
+  it('настроение народа прибавляет к производству', () => {
     const { state } = makeSession();
-    setup(state, { buildings: { temples: 1 }, workers: { temples: 1 } });
-    state.technologies.religion = true;
+    setup(state, { buildings: { farms: 2 }, workers: { farms: 4 } });
 
-    assert.equal(computeProduction(state).happiness, 1);
+    state.setHappiness(0);
+    const neutral = computeProduction(state).food;
+
+    state.setHappiness(2);
+    const joyful = computeProduction(state).food;
+
+    assert.ok(joyful > neutral, 'при счастье +2 должно производиться больше');
+    assert.equal(joyful, Math.floor(neutral * BALANCE.happiness.prodMult[2]));
+  });
+
+  it('на золото настроение не влияет: золото идёт от налога', () => {
+    const { state } = makeSession();
+    setup(state, { buildings: { markets: 2 }, workers: { markets: 2 } });
+
+    state.setHappiness(-2);
+    assert.equal(computeProduction(state).gold, 0);
+  });
+});
+
+// --- Счастье и налоги (SYSTEMS_SPEC §2, §3) ---
+
+describe('уровень счастья', () => {
+  it('считается от ставки налога', () => {
+    const { state } = makeSession();
+
+    for (const [index, tax] of BALANCE.taxes.entries()) {
+      state.data.taxRateIndex = index;
+      assert.equal(computeHappiness(state), tax.happinessBase,
+        `ставка ${Math.round(tax.rate * 100)}%`);
+    }
+  });
+
+  it('поднимается на шаг с храмом и «Религией»', () => {
+    const { state } = makeSession();
+    state.data.taxRateIndex = 3;           // 40% -> база -1
+    assert.equal(computeHappiness(state), -1);
+
+    setup(state, { buildings: { temples: 1 } });
+    assert.equal(computeHappiness(state), -1, 'храм без «Религии» ничего не даёт');
+
+    state.technologies.religion = true;
+    assert.equal(computeHappiness(state), -1 + BALANCE.happiness.religionBonus);
+  });
+
+  it('не выходит за пределы', () => {
+    const { state } = makeSession();
+
+    state.data.taxRateIndex = 4;           // 50% -> база -2
+    assert.equal(computeHappiness(state), -2);
+
+    state.data.taxRateIndex = 0;           // 10% -> база +2
+    state.technologies.religion = true;
+    setup(state, { buildings: { temples: 3 } });
+    assert.equal(computeHappiness(state), 2, 'выше +2 не подняться');
+  });
+
+  it('отток жителей зависит от уровня', () => {
+    const { state } = makeSession();
+
+    state.setHappiness(0);
+    assert.equal(computeHappinessOutflow(state), 0);
+    state.setHappiness(-1);
+    assert.equal(computeHappinessOutflow(state), BALANCE.happiness.leavePerDayLow);
+    state.setHappiness(-2);
+    assert.equal(computeHappinessOutflow(state), BALANCE.happiness.leavePerDayHigh);
+    state.setHappiness(2);
+    assert.equal(computeHappinessOutflow(state), 0);
+  });
+
+  it('уровень всегда в диапазоне, даже если пришёл мусор', () => {
+    const { state } = makeSession();
+
+    state.data.happiness = 99;
+    state.normalize();
+    assert.equal(state.happiness, BALANCE.happiness.range[1]);
+
+    state.data.happiness = -99;
+    state.normalize();
+    assert.equal(state.happiness, BALANCE.happiness.range[0]);
+  });
+});
+
+describe('доход от налога', () => {
+  it('жители платят ставку налога', () => {
+    const { state } = makeSession();
+    state.setResource('population', 10);
+
+    state.data.taxRateIndex = 0;           // 10% -> 1 золота
+    assert.equal(computeTaxIncome(state), 10);
+    state.data.taxRateIndex = 4;           // 50% -> 5 золота
+    assert.equal(computeTaxIncome(state), 50);
+  });
+
+  it('рынки добавляют к сбору с каждого жителя', () => {
+    const { state } = makeSession();
+    state.setResource('population', 10);
+    state.data.taxRateIndex = 0;
+
+    const bare = computeTaxIncome(state);
+    setup(state, { buildings: { markets: 3 } });
+    const withMarkets = computeTaxIncome(state);
+
+    const bonus = BALANCE.income.marketGoldPerCitizen * 10 * 3;
+    assert.equal(withMarkets, bare + bonus);
+  });
+
+  it('нулевое население даёт нулевой доход', () => {
+    const { state } = makeSession();
+    state.setResource('population', 0);
+    assert.equal(computeTaxIncome(state), 0);
+  });
+
+  it('доход попадает в казну и в статистику', () => {
+    const { state } = makeSession();
+    state.setResource('population', 20);
+    const before = state.resource('gold');
+
+    const gained = applyTaxIncome(state);
+
+    assert.equal(state.resource('gold'), before + gained);
+    assert.equal(state.stats.totalGoldEarned, gained);
+  });
+});
+
+describe('отток из-за недовольства', () => {
+  it('народ уходит сам, когда народ недоволен', () => {
+    const { state } = makeSession();
+    state.setResource('population', 20);
+    state.setHappiness(-2);
+
+    const leaving = applyHappinessOutflow(state);
+
+    assert.equal(leaving, BALANCE.happiness.leavePerDayHigh);
+    assert.equal(state.population, 20 - leaving);
+  });
+
+  it('при нуле недовольства никто не уходит', () => {
+    const { state } = makeSession();
+    state.setResource('population', 20);
+    state.setHappiness(0);
+    assert.equal(applyHappinessOutflow(state), 0);
+  });
+
+  it('не уходит больше, чем есть жителей', () => {
+    const { state } = makeSession();
+    state.setResource('population', 2);
+    state.setHappiness(-2);
+
+    applyHappinessOutflow(state);
+
+    assert.equal(state.population, 0);
   });
 });
 
@@ -97,13 +251,6 @@ describe('потребление', () => {
     // не хватало 10 - 2 = 8 единиц, смертность 20% от недостачи = 1
     assert.equal(state.population, 19);
     assert.ok(notes.some((note) => note.text.includes('Голод')));
-  });
-
-  it('счастье падает на единицу за день', () => {
-    const { state } = makeSession();
-    const before = state.happiness;
-    applyConsumption(state);
-    assert.equal(state.happiness, before - BALANCE.happiness.dailyDecay);
   });
 
   it('нехватка золота на обслуживание не уводит баланс в минус', () => {
@@ -301,5 +448,94 @@ describe('защита от NaN', () => {
     for (const [key, value] of Object.entries(state.data.buildings)) {
       assert.ok(Number.isFinite(value) && value >= 0, `${key} = ${value}`);
     }
+  });
+});
+
+// --- Смена налога как действие хода ---
+
+describe('смена налога', () => {
+  it('предлагается раз в taxChangeEveryDays дней, а не каждый день', () => {
+    for (let day = 1; day <= 30; day += 1) {
+      const { engine, state } = makeSession();
+      state.data.day = day;
+
+      const offered = engine.availableActions().some((a) => a.id === 'tax');
+      assert.equal(offered, day % BALANCE.taxChangeEveryDays === 0, `день ${day}`);
+    }
+  });
+
+  it('перебирает ставки по кругу', () => {
+    const { engine, state } = makeSession();
+    state.data.day = BALANCE.taxChangeEveryDays;
+    const start = state.taxRateIndex;
+
+    for (let step = 1; step <= BALANCE.taxes.length; step += 1) {
+      assert.equal(engine.applyAction('tax').ok, true);
+      assert.equal(state.taxRateIndex, (start + step) % BALANCE.taxes.length);
+    }
+  });
+
+  it('не меняется в неподходящий день', () => {
+    const { engine, state } = makeSession();
+    state.data.day = BALANCE.taxChangeEveryDays + 1;
+    const before = state.taxRateIndex;
+
+    assert.equal(engine.applyAction('tax').ok, false);
+    assert.equal(state.taxRateIndex, before);
+  });
+
+  it('после смены налога настроение народа меняется на следующий день', () => {
+    const { engine, state } = makeSession();
+    state.data.day = BALANCE.taxChangeEveryDays;
+    state.data.taxRateIndex = 0;           // 10% -> +2
+    state.setHappiness(-2);
+
+    engine.applyAction('tax');              // -> 20%, база +1
+    engine.advanceDay();
+
+    assert.equal(state.happinessLevel, 1);
+  });
+});
+
+// --- Дневной цикл целиком ---
+
+describe('день целиком', () => {
+  it('счастье пересчитывается каждый день по ставке налога', () => {
+    const { engine, state } = makeSession();
+    state.data.taxRateIndex = 4;           // 50% -> -2
+    state.setHappiness(2);
+
+    engine.advanceDay();
+
+    assert.equal(state.happinessLevel, -2);
+  });
+
+  it('недовольство уводит жителей каждый день', () => {
+    const { engine, state } = makeSession();
+    state.setResource('population', 30);
+    state.setResource('food', 500);
+    state.data.taxRateIndex = 4;           // 50% -> -2
+    setup(state, { buildings: { farms: 1 } });
+
+    engine.advanceDay();
+
+    // Ушло 5, но новый житель успевает поселиться: смена налога не
+    // обнуляет приток, а лишь делает его меньше оттока
+    const expected = 30 - BALANCE.happiness.leavePerDayHigh + BALANCE.population.growthPerDay;
+    assert.equal(state.population, expected);
+    assert.equal(state.stats.citizensLost, BALANCE.happiness.leavePerDayHigh);
+  });
+
+  it('довольный народ не теряет никого и получает налоги', () => {
+    const { engine, state } = makeSession();
+    state.setResource('population', 10);
+    state.setResource('food', 500);
+    state.setResource('gold', 0);
+    state.data.taxRateIndex = 0;           // 10% -> +2, 1 золота с жителя
+
+    engine.advanceDay();
+
+    assert.ok(state.happinessLevel > 0, 'народ доволен');
+    assert.ok(state.resource('gold') > 0, 'казна пополнилась налогом');
   });
 });

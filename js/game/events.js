@@ -31,7 +31,9 @@ export function availableEvents(state) {
       if (!def.seasons.includes(seasonId)) continue;
     }
 
-    if (def.happinessBelow != null && state.happiness >= def.happinessBelow) continue;
+    // happinessBelow задаёт предел уровня: событие идёт, только если
+    // народ доволен не выше этого уровня
+    if (def.happinessBelow != null && state.happiness > def.happinessBelow) continue;
 
     if (def.foodBelowPopulationMultiplier != null) {
       const threshold = state.population * def.foodBelowPopulationMultiplier;
@@ -106,7 +108,7 @@ export function trigger(state, id, rng) {
 
         state.addResource('gold', -goldLost);
         state.addResource('population', -peopleLost);
-        state.addResource('happiness', -def.happinessLoss);
+        state.setHappiness(state.happiness - def.happinessLoss);
         state.stats.citizensLost += peopleLost;
 
         note.text = `Нападение бандитов! Потери: -${goldLost} золота, -${peopleLost} жителей`;
@@ -126,7 +128,7 @@ export function trigger(state, id, rng) {
 
       deaths = Math.min(deaths, state.population);
       state.addResource('population', -deaths);
-      state.addResource('happiness', -def.happinessLoss);
+      state.setHappiness(state.happiness - def.happinessLoss);
       state.stats.citizensLost += deaths;
 
       note.text = `Эпидемия! Погибло ${deaths} жителей`;
@@ -146,26 +148,28 @@ export function trigger(state, id, rng) {
 
       state.addResource('food', -foodLost);
       state.addResource('wood', -woodLost);
-      state.addResource('happiness', -def.happinessLoss);
+      state.setHappiness(state.happiness - def.happinessLoss);
 
       note.text = `Метель! Потери: -${foodLost} еды, -${woodLost} древесины`;
       break;
     }
 
     case 'famine_warning': {
-      state.addResource('happiness', -def.happinessLoss);
+      state.setHappiness(state.happiness - def.happinessLoss);
       note.text = 'Запасы еды на исходе!';
       break;
     }
 
     case 'revolt': {
+      // Насколько глубоко народ провалился ниже приемлемого уровня:
+      // при -2 против допустимого -1 сила бунта равна 1.
       const rebellion = def.suppressionHappinessBase - state.happiness;
       const suppression =
         state.buildingCount('towers') * def.suppressionTower +
         state.population * def.suppressionPerPopulationHalf;
 
       if (suppression > rebellion) {
-        state.addResource('happiness', def.happinessGainOnSuccess);
+        state.setHappiness(state.happiness + def.happinessGainOnSuccess);
         note.text = 'Волнения в городе подавлены';
       } else {
         const deaths = Math.min(

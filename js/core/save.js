@@ -8,8 +8,8 @@
 
 import { BALANCE } from '../balance.js';
 
-const KEY = 'cbp.save.v2';
-const LEGACY_KEYS = ['cityBuilderSave'];
+const KEY = 'cbp.save.v3';
+const LEGACY_KEYS = ['cbp.save.v2', 'cityBuilderSave'];
 
 function storage() {
   try {
