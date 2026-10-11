@@ -670,29 +670,23 @@ export const BALANCE = {
   // --------------------------------------------------------------------------
   // Выборы действий
   //
-  // Приоритет: чем выше в списке, тем раньше попадает в слоты. Выборы одной
-  // группы перемешиваются, чтобы последовательность не повторялась день
-  // за днём.
+  // Выдача случайная, с весами по категориям. Производственные здания
+  // выпадают чаще всего; социальные здания, технологии и дороги — редкие
+  // бонусы; налог стоит между ними (см. taxChance). Подробности — в choices.js.
   // --------------------------------------------------------------------------
   choices: {
     slots: 4,
     // Шанс, что налог предложат в конкретный день. Налог — случайный вариант,
     // не требует ресурсов; новая ставка при этом выпадает каждый день.
     taxChance: 0.5,
-    priority: [
-      'build:houses', 'build:farms', 'build:lumberMills', 'build:quarries', 'build:well',
-      'build:roads',
-      'build:sawmills', 'build:brickworks', 'build:mills', 'build:weavings', 'build:markets',
-      'build:taverns', 'build:fireBrigades',
-      'build:mines', 'build:smelters', 'build:forges', 'build:scriptoriums', 'build:cattleYards',
-      'build:school', 'build:hospital', 'build:guard', 'build:bank', 'build:fireHouses',
-      'build:machineShops', 'build:jewelers', 'build:wineries', 'build:gastronomies',
-      'build:printingHouses', 'build:townHall', 'build:theater', 'build:monument',
-      'build:aqueduct', 'build:harbour', 'build:fireStation', 'build:wonder',
-      'develop:advancedFarming', 'develop:lumberProcessing', 'develop:stoneMasonry',
-      'develop:tradeRoutes', 'develop:education',
-      'trade', 'expedition', 'wait',
-    ],
+    // Веса категорий при выдаче. Чем больше вес, тем чаще категория попадает
+    // в слоты. Категория — по виду действия (см. categoryOf в choices.js).
+    weights: {
+      production: 10, // производственные здания: основа выборов
+      house: 3,       // дома: нужны для населения
+      trade: 2,       // торговля и экспедиция
+      rare: 1,        // социальные здания, технологии, дороги, чудо света — редкие бонусы
+    },
     actions: {
       trade:      { label: 'Торговать', icon: '💵' },
       expedition: { label: 'Отправить экспедицию', icon: '🗺️' },

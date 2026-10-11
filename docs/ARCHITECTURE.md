@@ -144,8 +144,9 @@ for (let i = 0; i < 500; i += 1) {
      onBuild: {},
    },
    ```
-2. **balance.js** → `choices.priority`: добавить `'build:bakery'` в нужное
-   место списка. Без этого действие не попадёт в выборы.
+2. **balance.js** → `buildings.bakery`: поле `kind` (`production`, `house`,
+   `social`) и `levels`. Категория из `kind` задаёт вес в выдаче
+   (`choices.weights`); отдельного списка в выборах нет.
 3. **render/city.js** → `defineModels()`: описать внешний вид.
 
 Больше ничего трогать не нужно: интерфейс, хроника, расчёты и панель
@@ -164,7 +165,7 @@ for (let i = 0; i < 500; i += 1) {
      happinessLoss: 10,
    },
    ```
-2. **balance.js** → `choices.priority` не нужен: событие не действие.
+2. **balance.js** → `choices` не нужен: событие не действие.
 3. **game/events.js** → ветка `case 'locusts':` в `trigger()`.
 4. **tests/sim.test.js** — партия должна пережить событие.
 
@@ -176,7 +177,8 @@ for (let i = 0; i < 500; i += 1) {
 ## 8. Как добавить технологию
 
 1. **balance.js** → `technologies.<key>` с `cost` и `requiresBuilding`.
-2. **balance.js** → `choices.priority`: `'develop:<key>'`.
+2. Отдельного списка выборов не нужно: технология попадает в категорию `rare`
+   (`choices.weights`) автоматически.
 3. Указать эффект одним из полей: `productionMult` (множитель ресурса),
    `happinessPerWorker` (счастье за рабочего), `lossMult` (меньше потерь).
 4. Прочитать эффект в `js/game/economy.js` или `js/game/events.js`.

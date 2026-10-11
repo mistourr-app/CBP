@@ -1,10 +1,13 @@
 // ============================================================================
-// Choices — генерация четырёх вариантов действий на ход.
+// Choices — выдача вариантов действий на ход.
 //
-// В прототипе это была цепочка примерно из 200 строк if-условий, а стоимость
-// зданий дублировалась ещё в двух местах (проверка показа и блокировка
-// кнопки). Теперь условия и цены берутся из balance.js через
-// engine.availableActions().
+// Выдача случайная, с весами по категориям (BALANCE.choices.weights):
+//   production — производственные здания: основа выборов, выпадают чаще всего;
+//   house      — дома;
+//   trade      — торговля и экспедиция;
+//   rare       — социальные здания, технологии, дороги, чудо света: редкие бонусы.
+// Налог стоит между ними: появляется с шансом taxChance и занимает случайную
+// позицию. «Подождать» всегда последний.
 //
 // Гарантии, которые проверяются тестами:
 //   * не больше BALANCE.choices.slots вариантов, «Подождать» всегда есть;
@@ -14,13 +17,7 @@
 
 import { BALANCE } from '../balance.js';
 
-const { slots, priority, actions } = BALANCE.choices;
-
-const priorityIndex = new Map(priority.map((id, index) => [id, index]));
-
-function priorityOf(actionId) {
-  return priorityIndex.has(actionId) ? priorityIndex.get(actionId) : priority.length;
-}
+const { slots, actions, weights } = BALANCE.choices;
 
 function buildWait() {
   return {
@@ -46,12 +43,56 @@ function normalize(action) {
   };
 }
 
+/** Категория действия для весов выдачи. */
+export function categoryOf(action) {
+  if (action.id.startsWith('build:')) {
+    const def = BALANCE.buildings[action.id.slice('build:'.length)];
+    if (def?.kind === 'production') return 'production';
+    if (def?.kind === 'house') return 'house';
+    return 'rare'; // социальные, дороги, чудо света
+  }
+  if (action.id.startsWith('develop:')) return 'rare';
+  if (action.id === 'trade' || action.id === 'expedition') return 'trade';
+  return 'rare';
+}
+
+/**
+ * Выбирает до `count` вариантов без повторов: сначала категорию по весам,
+ * затем случайное действие внутри неё. Так редкие категории появляются реже,
+ * но не исчезают совсем.
+ */
+function drawWeighted(pool, count, rng) {
+  const groups = new Map();
+  for (const action of pool) {
+    const key = categoryOf(action);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(action);
+  }
+
+  const picked = [];
+  while (picked.length < count && groups.size > 0) {
+    let total = 0;
+    for (const key of groups.keys()) total += weights[key] ?? 1;
+
+    let roll = rng.float() * total;
+    let chosenKey = null;
+    for (const key of groups.keys()) {
+      roll -= weights[key] ?? 1;
+      if (roll < 0) { chosenKey = key; break; }
+    }
+    if (chosenKey == null) chosenKey = [...groups.keys()].at(-1);
+
+    const list = groups.get(chosenKey);
+    const index = Math.floor(rng.float() * list.length);
+    picked.push(list.splice(index, 1)[0]);
+    if (list.length === 0) groups.delete(chosenKey);
+  }
+
+  return picked;
+}
+
 /**
  * Собирает варианты на текущий ход.
- *
- * Налог — случайный вариант наравне с остальными: появляется с шансом
- * BALANCE.choices.taxChance, занимает случайный слот и не требует ресурсов.
- * «Подождать» всегда последний.
  *
  * @param {Engine} engine
  * @param {Rng}    rng
@@ -61,55 +102,20 @@ export function generateChoices(engine, rng) {
   const available = engine.availableActions();
   const tax = available.find((action) => action.group === 'tax');
 
-  const candidates = available
+  const pool = available
     .filter((action) => action.id !== 'wait' && action.group !== 'tax')
-    .map(normalize)
-    .sort((a, b) => priorityOf(a.id) - priorityOf(b.id));
+    .map(normalize);
 
-  // Сдвиг приоритета по номеру дня: за цикл показывается каждый вариант.
-  // Без сдвига в слоты попадали бы только первые типы зданий.
-  const shift = (engine.state.day - 1) % Math.max(1, priority.length);
-  const rotated = rotate(candidates, shift);
-
-  // Налог выпадает случайно: резервируем под него слот только в этот день
+  // Налог — случайный вариант: резервируем под него слот в выпавший день
   const taxOffered = Boolean(tax) && rng.chance(BALANCE.choices.taxChance);
   const capacity = slots - 1 - (taxOffered ? 1 : 0);
 
-  const picked = [];
-  const seen = new Set();
+  const picked = drawWeighted(pool, capacity, rng);
 
-  for (const choice of shuffleByPriority(rotated, rng)) {
-    if (seen.has(choice.id)) continue;
-    seen.add(choice.id);
-    picked.push(choice);
-    if (picked.length >= capacity) break;
-  }
-
-  // Налог ставим в случайную позицию среди обычных вариантов
   if (taxOffered) {
     const at = rng.int(0, picked.length);
     picked.splice(at, 0, normalize(tax));
   }
 
   return [...picked, buildWait()];
-}
-
-/** Циклический сдвиг списка — так же, как сдвиг его приоритета. */
-function rotate(sorted, shift) {
-  if (!shift || sorted.length <= 1) return sorted;
-  return sorted.slice(shift).concat(sorted.slice(0, shift));
-}
-
-function shuffleByPriority(sorted, rng) {
-  const result = [];
-
-  for (let i = 0; i < sorted.length; ) {
-    const groupPriority = priorityOf(sorted[i].id);
-    let end = i;
-    while (end < sorted.length && priorityOf(sorted[end].id) === groupPriority) end += 1;
-    result.push(...rng.shuffle(sorted.slice(i, end)));
-    i = end;
-  }
-
-  return result;
 }

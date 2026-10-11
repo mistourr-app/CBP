@@ -9,6 +9,9 @@ import { makeSession, setup } from './helpers.js';
 
 const SLOTS = BALANCE.choices.slots;
 
+// Длина выборки для проверок, где нужно увидеть редкие варианты
+const DAYS_SAMPLE = 400;
+
 function freshDay({ seed = 1, day = 1 } = {}) {
   const { state, engine, rng } = makeSession(seed);
   state.data.day = day;
@@ -68,7 +71,7 @@ describe('состав выбора', () => {
     state.setResource('food', 100000);
     state.setResource('population', 80);
 
-    for (let day = 1; day <= BALANCE.choices.priority.length; day += 1) {
+    for (let day = 1; day <= DAYS_SAMPLE; day += 1) {
       state.data.day = day;
       engine.rollOffers();
       for (const choice of generateChoices(engine, rng)) {
@@ -123,7 +126,7 @@ describe('доступность', () => {
     state.setResource('population', 30);
 
     let seenMarket = false;
-    for (let day = 1; day <= 60 && !seenMarket; day += 1) {
+    for (let day = 1; day <= DAYS_SAMPLE && !seenMarket; day += 1) {
       state.data.day = day;
       seenMarket = generateChoices(engine, rng).some((c) => c.id === 'build:markets');
     }
@@ -172,16 +175,16 @@ describe('достижимость всех зданий', () => {
     state.setResource('food', 100000);
     state.setResource('population', 80);
 
+    // Выдача случайная: редкие здания выпадают реже, поэтому смотрим на длинном отрезке
     const seen = new Set();
-    const cycle = BALANCE.choices.priority.length;
-    for (let day = 1; day <= cycle; day += 1) {
+    for (let day = 1; day <= DAYS_SAMPLE; day += 1) {
       state.data.day = day;
       for (const choice of generateChoices(engine, rng)) seen.add(choice.id);
     }
 
     const expected = ['sawmills', 'brickworks', 'mills', 'weavings', 'markets', 'taverns', 'fireBrigades'];
     for (const key of expected) {
-      assert.ok(seen.has(`build:${key}`), `${key} не показывался за полный цикл`);
+      assert.ok(seen.has(`build:${key}`), `${key} не показывался за ${DAYS_SAMPLE} дней`);
     }
   });
 });
