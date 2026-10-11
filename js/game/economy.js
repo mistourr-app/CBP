@@ -179,8 +179,13 @@ export function computeMaintenance(state) {
 }
 
 /** Потребление еды за день. */
+export function foodPerCitizen(state) {
+  const table = BALANCE.population.foodPerCitizenPerDay;
+  return table[state.tier - 1] ?? table[table.length - 1];
+}
+
 export function computeFoodConsumption(state) {
-  return Math.floor(state.population * BALANCE.population.foodPerCitizenPerDay);
+  return Math.floor(state.population * foodPerCitizen(state));
 }
 
 /** Сводка за день без изменения состояния — для интерфейса и симуляций. */
@@ -190,6 +195,8 @@ export function computeDaily(state) {
     foodKey: currentFoodKey(state),
     maintenance: computeMaintenance(state),
     foodConsumption: computeFoodConsumption(state),
+    // Чистый приход золота в день: налог минус обслуживание зданий
+    goldNet: computeTaxIncome(state) - computeMaintenance(state),
     taxIncome: computeTaxIncome(state),
   };
 }

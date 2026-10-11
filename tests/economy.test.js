@@ -252,21 +252,33 @@ describe('отток из-за недовольства', () => {
 });
 
 describe('потребление', () => {
-  it('еда расходуется по количеству населения', () => {
+  it('еда расходуется: каждый житель съедает столько, сколько задано для тира', () => {
     const { state } = makeSession();
-    state.setResource('population', 20);
-    assert.equal(computeFoodConsumption(state), 10);
+    const perCitizen = BALANCE.population.foodPerCitizenPerDay[0];
+    state.setResource('population', 10);
+    assert.equal(computeFoodConsumption(state), 10 * perCitizen);
+  });
+
+  it('на каждом тире житель ест больше, чем на предыдущем', () => {
+    const table = BALANCE.population.foodPerCitizenPerDay;
+    for (let i = 1; i < table.length; i += 1) {
+      assert.ok(table[i] > table[i - 1], `тир ${i + 1} ест не больше тира ${i}`);
+    }
   });
 
   it('при нехватке еды население убывает, а еда обнуляется', () => {
     const { state } = makeSession();
-    setup(state, { resources: { food: 2, population: 20 } });
+    const perCitizen = BALANCE.population.foodPerCitizenPerDay[0];
+    const population = 20;
+    const need = Math.floor(population * perCitizen);
+    setup(state, { resources: { food: 2, population } });
 
     const notes = applyConsumption(state);
 
     assert.equal(state.resource('food'), 0);
-    // не хватало 10 - 2 = 8 единиц, смертность 20% от недостачи = 1
-    assert.equal(state.population, 19);
+    const shortage = need - 2;
+    const starved = Math.floor(shortage * BALANCE.population.starveDeathsPerShortageUnit);
+    assert.equal(state.population, population - starved);
     assert.ok(notes.some((note) => note.text.includes('Голод')));
   });
 

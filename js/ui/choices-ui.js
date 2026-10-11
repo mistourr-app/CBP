@@ -82,21 +82,27 @@ export class ChoicesPanel {
       return choice.effects.map((effect) => deltaChip(effect));
     }
 
+    // Цвет по смыслу: расход — красным, приход — зелёным, остальное нейтрально
     const nodes = [];
 
     for (const { resource, amount } of choice.requirements ?? []) {
       const def = BALANCE.resources[resource];
       const missing = this.session.state.resource(resource) < amount;
-      nodes.push(requirement(def.icon, String(amount), missing));
+      nodes.push(figure(def.icon, `−${amount}`, 'cost', missing));
+    }
+
+    for (const [resource, amount] of Object.entries(choice.gain ?? {})) {
+      if (!amount) continue;
+      nodes.push(figure(BALANCE.resources[resource].icon, `+${amount}`, 'gain'));
     }
 
     if (choice.workers > 0) {
-      nodes.push(requirement(BALANCE.workers.icon, String(choice.workers), false));
+      nodes.push(figure(BALANCE.workers.icon, String(choice.workers), 'neutral'));
     }
 
     if (choice.chance != null) {
-      nodes.push(requirement(BALANCE.economy.expedition.chanceIcon,
-        `${Math.round(choice.chance * 100)}%`, false));
+      nodes.push(figure(BALANCE.economy.expedition.chanceIcon,
+        `${Math.round(choice.chance * 100)}%`, 'neutral'));
     }
 
     return nodes;
@@ -112,10 +118,10 @@ export class ChoicesPanel {
   }
 }
 
-/** Одно требование: иконка и число. Нехватка подсвечивается. */
-function requirement(icon, value, missing) {
+/** Одна цифра с иконкой. tone: cost | gain | neutral (см. CSS .fig--*). */
+function figure(icon, value, tone, missing = false) {
   return h('span', {
-    class: missing ? 'req req--missing' : 'req',
+    class: `fig fig--${tone}${missing ? ' fig--missing' : ''}`,
     text: `${icon} ${value}`,
   });
 }

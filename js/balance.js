@@ -50,7 +50,9 @@ const HAPPINESS = {
 const POPULATION = {
   // Пассивного прироста нет: новые жители приходят только через постройку
   // домов и события с выбором (SYSTEMS_SPEC §2).
-  foodPerCitizenPerDay: 0.5,
+  // Еды на одного жителя в день, по уровню поселения (индекс = tier − 1).
+  // Чем выше уровень, тем больше потребляет каждый житель.
+  foodPerCitizenPerDay: [1, 1.5, 2, 2.5, 3],
   starveDeathsPerShortageUnit: 0.2,
   residentsPerHouse: 1,
 };

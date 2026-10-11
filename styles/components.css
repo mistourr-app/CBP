@@ -238,9 +238,10 @@
 .res__goal {
   display: block;
   font-family: var(--font-num);
-  font-size: 0.5625rem;
+  font-size: 0.625rem;
+  font-weight: 700;
   line-height: 1.2;
-  color: var(--c-text-faint);
+  color: var(--c-text-muted);
   white-space: nowrap;
 }
 
@@ -250,10 +251,10 @@
   position: absolute;
   left: var(--sp-2);
   right: var(--sp-2);
-  bottom: 5px;
-  height: 3px;
+  bottom: 4px;
+  height: 5px;
   border-radius: var(--r-full);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.28);
   overflow: hidden;
 }
 
@@ -263,12 +264,12 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--res-color, var(--c-bg-accent));
+  background: var(--c-text);
 }
 
 /* Цель набрана: ресурс выглядит собранным */
-.res--ready .res__goal { color: var(--c-success); }
-.res--ready .res__bar-fill { background: var(--c-success); }
+.res--ready .res__goal { color: var(--c-positive); }
+.res--ready .res__bar-fill { background: var(--c-positive); }
 
 /* Ресурсы прошлых уровней скрыты; атрибут hidden должен побеждать display: flex */
 .res[hidden] { display: none; }
@@ -503,8 +504,11 @@
 }
 
 /* Нехватка ресурса в требованиях подсвечивается */
-.req { color: var(--c-text-muted); white-space: nowrap; }
-.req--missing { color: var(--c-danger); }
+.fig { white-space: nowrap; }
+.fig--cost { color: var(--c-negative); }
+.fig--gain { color: var(--c-positive); }
+.fig--neutral { color: var(--c-text-muted); }
+.fig--missing { font-weight: 700; text-decoration: underline; }
 
 /* «Подождать» занимает обычный слот, как и остальные действия */
 .choice--wait {
@@ -655,8 +659,8 @@
   white-space: nowrap;
 }
 .delta__arrow { font-size: 0.6rem; }
-.delta--up .delta__arrow, .delta--up .delta__value { color: var(--c-success); }
-.delta--down .delta__arrow, .delta--down .delta__value { color: var(--c-danger); }
+.delta--up .delta__arrow, .delta--up .delta__value { color: var(--c-positive); }
+.delta--down .delta__arrow, .delta--down .delta__value { color: var(--c-negative); }
 .delta--flat .delta__arrow, .delta--flat .delta__value { color: var(--c-text-faint); }
 
 /* --- Попап по центру экрана ---------------------------------------------- */

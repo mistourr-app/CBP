@@ -7,7 +7,7 @@
 // ============================================================================
 
 import { BALANCE } from '../balance.js';
-import { computeDaily, currentFoodKey, visibleResources } from '../game/economy.js';
+import { computeDaily, currentFoodKey, foodPerCitizen, visibleResources } from '../game/economy.js';
 import { el, formatDelta, formatNumber, h } from './dom.js';
 
 const RESOURCE_COLORS = {
@@ -21,7 +21,7 @@ const RESOURCE_COLORS = {
 // Пороговые значения уровня предупреждения в панели ресурсов
 const LOW_THRESHOLDS = {
   // Еда проверяется отдельно по пищевому ресурсу текущего уровня (см. #updateResources)
-  food: (state) => state.resource(currentFoodKey(state)) < state.population * BALANCE.population.foodPerCitizenPerDay * 3,
+  food: (state) => state.resource(currentFoodKey(state)) < state.population * foodPerCitizen(state) * 3,
   gold: (state) => state.resource('gold') < 10,
   wood: (state) => state.resource('wood') < 15,
   stone: (state) => state.resource('stone') < 15,
@@ -211,10 +211,11 @@ export class StatsPanel {
 
       value.textContent = formatNumber(amount);
 
+      // Золото: налог минус обслуживание. Еда: выработка минус потребление
+      // жителей. Остальное: выработка зданий.
       const isFood = key === daily.foodKey;
-      const perDay = isFood
-        ? daily.production[key] - daily.foodConsumption
-        : daily.production[key];
+      let perDay = key === 'gold' ? daily.goldNet : daily.production[key];
+      if (isFood) perDay -= daily.foodConsumption;
 
       delta.textContent = formatDelta(perDay);
       delta.className = 'res__delta ' + (
