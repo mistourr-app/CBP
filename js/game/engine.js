@@ -382,7 +382,8 @@ export class Engine {
     state.data.popup = {
       kind: 'tier',
       icon: next.icon,
-      text: current.upgradeText,
+      // Поздравление и новое сословие, которое теперь живёт в городе
+      text: `${current.upgradeText} В городе появилось новое сословие: ${next.populationName}.`,
       button: BALANCE.popups.tierUpButton,
     };
 

@@ -60,7 +60,9 @@ export class StatsPanel {
   #buildMeters() {
     const value = h('span', { class: 'meter__value' });
     const sub = h('span', { class: 'meter__sub' });
+    // Название сословия меняется с тиром (поселенцы, фермеры, горожане…)
     const label = h('span', { class: 'meter__label', text: 'Население' });
+    this.populationLabel = label;
 
     const body = h('div', { class: 'meter__body' });
     body.append(label, value, sub);
@@ -153,6 +155,9 @@ export class StatsPanel {
   #updateMeters(state) {
     const employed = state.employedWorkers;
     const free = state.freeWorkers;
+
+    // Население называется по сословию текущего тира
+    this.populationLabel.textContent = state.tierDef?.populationName ?? 'Население';
 
     const people = this.meterNodes.get('population');
     people.value.textContent = formatNumber(state.population);

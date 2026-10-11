@@ -76,7 +76,7 @@ export const BALANCE = {
     schema: 5,
     balanceVersion: 4,
     // Метка сборки интерфейса: показывается в плашке города
-    build: '2026-10-11 · h',
+    build: '2026-10-11 · i',
   },
 
   // --------------------------------------------------------------------------
@@ -167,6 +167,8 @@ export const BALANCE = {
     levels: [
       {
         id: 'settlement', name: 'Поселение', icon: '🛖',
+        // Сословие, живущее на этом тире. Новое появляется в попапе перехода.
+        populationName: 'Поселенцы',
         nextName: 'Деревня', nextIcon: '🏠',
         upgradeText: 'Поздравляем, поселение стало деревней!',
         // Стартовый запас пищевого ресурса следующего тира (ПРЕДВАРИТЕЛЬНО, подбирается по симуляции)
@@ -175,6 +177,7 @@ export const BALANCE = {
       },
       {
         id: 'village', name: 'Деревня', icon: '🏠',
+        populationName: 'Фермеры',
         nextName: 'Городок', nextIcon: '🏘️',
         upgradeText: 'Поздравляем, деревня стала городком!',
         starterFood: 60,
@@ -182,6 +185,7 @@ export const BALANCE = {
       },
       {
         id: 'town', name: 'Городок', icon: '🏘️',
+        populationName: 'Горожане',
         nextName: 'Город', nextIcon: '🏙️',
         upgradeText: 'Поздравляем, городок стал городом!',
         starterFood: 60,
@@ -189,6 +193,7 @@ export const BALANCE = {
       },
       {
         id: 'city', name: 'Город', icon: '🏙️',
+        populationName: 'Купцы',
         nextName: 'Большой город', nextIcon: '🏛️',
         upgradeText: 'Поздравляем, город стал большим городом!',
         starterFood: 60,
@@ -196,6 +201,7 @@ export const BALANCE = {
       },
       {
         id: 'metropolis', name: 'Большой город', icon: '🏛️',
+        populationName: 'Знать',
         nextName: null, nextIcon: null,
         upgradeText: null,
         requirements: null,

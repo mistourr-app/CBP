@@ -40,7 +40,8 @@ try {
   // -- Показатели ---------------------------------------------------------
   const meters = [...doc.querySelectorAll('.meter')].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   check(meters.length === 3, 'показателей ровно три', meters.join(' | '));
-  check(/Население/.test(meters[0]), 'есть население', meters[0]);
+  // Население называется по сословию текущего тира (поселенцы, фермеры…)
+  check(meters[0].includes(app.session.state.tierDef.populationName), 'есть население этого тира', meters[0]);
   check(!/рабочие/i.test(doc.querySelector('#meters').textContent) || /работают/.test(meters[0]),
         'занятость внутри карточки населения', meters[0]);
   check(!/\/\s*\d+/.test(meters[0]), 'лимита населения не видно', meters[0]);
