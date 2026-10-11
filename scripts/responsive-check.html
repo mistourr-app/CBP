@@ -62,7 +62,20 @@ for (const size of WIDTHS) {
   const doc = frame.contentDocument;
   const win = frame.contentWindow;
 
-  // Ресурсы в одну строку
+  // Показатели — население, счастье и налог — всегда в одну строку: это три
+  // состояния города, которые читают вместе
+  const meters = [...doc.querySelectorAll('.meters .meter')];
+  const meterRows = new Set(meters.map((n) => Math.round(n.getBoundingClientRect().top))).size;
+  check(meters.length === 3 && meterRows === 1, `${size.w}px: показатели в одну строку`, `карточек: ${meters.length}, строк: ${meterRows}`);
+
+  // Текст внутри показателей не обрезается: на узком экране три карточки
+  // делят ширину, и любой отрезанный текст сразу виден
+  const clippedMeters = meters
+    .map((n) => `${n.className.replace('meter meter--', '')}: ${n.scrollWidth - n.clientWidth}`)
+    .filter((text) => !text.endsWith(': 0'));
+  check(clippedMeters.length === 0, `${size.w}px: текст в показателях не обрезан`,
+        clippedMeters.join(', ') || 'нет');
+
   const cards = [...doc.querySelectorAll('.res')];
   const rows = new Set(cards.map((n) => Math.round(n.getBoundingClientRect().top))).size;
   check(rows === 1, `${size.w}px: ресурсы в одну строку`, `строк: ${rows}`);

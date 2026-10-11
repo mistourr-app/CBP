@@ -175,11 +175,14 @@ export class StatsPanel {
 
     const tax = this.meterNodes.get('tax');
     const rate = state.taxRate;
-    const moodBase = BALANCE.happiness.levels[String(rate.happinessBase)];
     const perCitizen = rate.goldPerCitizen * (BALANCE.tierTaxMult[0] ?? 1);
+    const moodBase = BALANCE.happiness.levels[String(rate.happinessBase)];
 
-    tax.value.textContent = `${Math.round(rate.rate * 100)}% · ${BALANCE.taxLabels[state.taxRateIndex]}`;
-    tax.sub.textContent = `${formatNumber(perCitizen)} зол. с жителя · ${moodBase.icon} ${moodBase.label.toLowerCase()}`;
+    // Карточка узкая, поэтому здесь только ставка и доход с жителя.
+    // Настроение от налога показывает «Счастье», а значок рядом со
+    // ставкой подсказывает, что будет с народом.
+    tax.value.textContent = `${Math.round(rate.rate * 100)}% ${moodBase.icon}`;
+    tax.sub.textContent = `${formatNumber(perCitizen)} зол./жителя`;
     tax.node.classList.toggle('meter--warn', rate.happinessBase <= MOOD_WARN);
   }
 
