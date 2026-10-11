@@ -515,6 +515,22 @@
   line-height: 1.2;
 }
 
+/* Эффекты: под названием, та же строка-подпись. Требования — ещё ниже. */
+.choice__effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-2);
+  margin-top: 2px;
+  font-family: var(--font-num);
+  font-size: var(--fs-2xs);
+  line-height: 1.2;
+}
+.choice__effects:empty { display: none; }
+
+/* Требования — отдельной строкой ниже эффектов */
+.choice__reqs { margin-top: 3px; }
+.choice__reqs:empty { display: none; }
+
 /* Нехватка ресурса в требованиях подсвечивается */
 .fig { white-space: nowrap; }
 .fig--cost { color: var(--c-text); }

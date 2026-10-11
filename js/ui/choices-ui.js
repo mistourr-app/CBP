@@ -30,9 +30,11 @@ export class ChoicesPanel {
     for (let i = 0; i < SLOT_COUNT; i += 1) {
       const icon = h('span', { class: 'choice__icon' });
       const text = h('span', { class: 'choice__text' });
-      const meta = h('span', { class: 'choice__meta' });
+      // Две отдельные строки: эффекты (зачем) и требования (чего стоит)
+      const effects = h('span', { class: 'choice__effects' });
+      const reqs = h('span', { class: 'choice__meta choice__reqs' });
       const body = h('span', { class: 'choice__body' });
-      body.append(text, meta);
+      body.append(text, effects, reqs);
 
       const button = h('button', {
         class: 'choice',
@@ -45,7 +47,7 @@ export class ChoicesPanel {
         this.onSelect(this.current[i]);
       });
 
-      this.buttons.push({ button, icon, text, meta });
+      this.buttons.push({ button, icon, text, effects, reqs });
       this.root.append(button);
     }
   }
@@ -54,7 +56,7 @@ export class ChoicesPanel {
     this.current = choices;
 
     for (let i = 0; i < this.buttons.length; i += 1) {
-      const { button, icon, text, meta } = this.buttons[i];
+      const { button, icon, text, effects, reqs } = this.buttons[i];
       const choice = choices[i];
 
       if (!choice) {
@@ -71,17 +73,17 @@ export class ChoicesPanel {
       // textContent, а не innerHTML: подписи приходят из данных игры
       icon.textContent = choice.icon;
       text.textContent = choice.label;
-      meta.replaceChildren(...this.#metaNodes(choice));
+      effects.replaceChildren(...(choice.effects ?? []).map((effect) => deltaChip(effect)));
+      reqs.replaceChildren(...this.#requirementNodes(choice));
     }
   }
 
   /**
-   * Строка под названием: сначала эффекты (стрелками, зачем здание нужно),
-   * затем требования (расход) и рабочие. Налог показывает только эффекты.
+   * Строка требований: ресурсы, рабочие, шанс. Эффекты выводятся отдельно.
+   * Цвет по смыслу: расход — красным, приход — зелёным, остальное нейтрально.
    */
-  #metaNodes(choice) {
-    // Цвет по смыслу: расход — красным, приход — зелёным, остальное нейтрально
-    const nodes = (choice.effects ?? []).map((effect) => deltaChip(effect));
+  #requirementNodes(choice) {
+    const nodes = [];
 
     for (const { resource, amount } of choice.requirements ?? []) {
       const def = BALANCE.resources[resource];
