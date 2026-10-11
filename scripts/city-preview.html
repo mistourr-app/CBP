@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>city-view</title>
+  <style>body{margin:0;background:#0a0e27;font:12px ui-monospace,monospace;color:#cbd}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="scene" width="900" height="700"></canvas>
+<script type="module">
+// Вид сверху: кварталы, улицы, тротуары, площадь.
+import * as THREE from '../vendor/three.module.min.js';
+import { Rng } from '../js/core/rng.js';
+import { CityView, BLOCK_PITCH, PLOT, ROAD_WIDTH } from '../js/render/city.js';
+import { COLOR } from '../js/render/palette.js';
+
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x4a7a2e);
+
+const camera = new THREE.PerspectiveCamera(45, 900 / 700, 1, 2000);
+camera.position.set(120, 180, 120);
+camera.lookAt(0, 0, 0);
+
+const sun = new THREE.DirectionalLight(0xfff0d4, 1.2);
+sun.position.set(80, 120, 60);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 150, bottom: -150, near: 1, far: 400 });
+scene.add(sun, new THREE.AmbientLight(0xffffff, 0.45));
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2),
+  new THREE.MeshStandardMaterial({ color: 0x4a7a2e, roughness: 1 }),
+);
+ground.receiveShadow = true;
+scene.add(ground);
+
+const city = new CityView(scene, new Rng(1));
+const scale = Number(new URLSearchParams(location.search).get('n') ?? 1);
+const base = { houses: 28, farms: 6, lumberMills: 4, quarries: 3, markets: 3, temples: 3, schools: 2, walls: 2, towers: 3 };
+city.sync(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, Math.round(v * scale)])));
+
+const size = new THREE.Vector3();
+const distance = city.radius * 2.1;
+camera.position.set(distance * 0.55, distance * 0.62, distance * 0.55);
+camera.lookAt(0, 0, 0);
+
+renderer.render(scene, camera);
+
+document.title = [
+  `зданий ${Object.values(city.counts).reduce((a, b) => a + b, 0)}`,
+  `радиус ${city.radius.toFixed(0)}`,
+  `квартал ${(BLOCK_PITCH).toFixed(1)}`,
+  `участок ${PLOT}`,
+  `улица ${ROAD_WIDTH}`,
+].join(' · ');
+</script>
+</body>
+</html>

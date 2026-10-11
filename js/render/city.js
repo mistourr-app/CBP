@@ -19,87 +19,160 @@ import { BUILDING_KEYS } from '../balance.js';
 import { COLOR } from './palette.js';
 
 // ---------------------------------------------------------------------------
-// Тайловая структура города
+// Город из кварталов
 //
-// Город разбит на квадратные участки (клетки). Дороги идут по границам
-// клеток, а не по их центрам, поэтому здание физически не может встать на
-// дорогу: участок уже отделён от проезжей части.
+// Город состоит из кварталов — плотных прямоугольников, где здания стоят
+// вплотную друг к другу, как в старом городе. Между кварталами идут
+// улицы. Так выглядит настоящий город; сетка дорог по одной на каждое
+// здание выглядела бы полосатым ковром.
 //
-//     участок      дорога      участок      дорога      участок
-//   [      ]      [   ]      [      ]      [   ]      [      ]
-//        центр клетки приходится на середину промежутка
+//     квартал из 4×4 зданий      улица      квартал
+//   ┌────┬────┬────┬────┐      ║      ┌────┬────┬────┬────┐
+//   │    │    │    │    │      ║      │    │    │    │    │
+//   └────┴────┴────┴────┘      ║      └────┴────┴────┴────┘
+//                        ← ROAD_WIDTH →
 //
-// В прототипе дороги шли крестом через центр, а клетки стояли в начале
-// координат. Здания центральной строки и столбца — а это всегда первая
-// постройка — оказывались прямо на дороге.
-//
-// Размеры считаются из настоящей геометрии, а не задаются числом: если
+// Размеры выводятся из настоящей геометрии, а не задаются числом: если
 // кто-то сделает здание шире промежутка, это обнаружит тест, а не игрок.
+//
+// Замена тайловой сетки на кварталы: дороги шли между каждым зданием, и
+// город читался как ряд полосок, а не как застройка.
 // ---------------------------------------------------------------------------
 
-/** Проектная сторона участка под здание. */
-const PLOT = 6.4;
+/** Шаг между соседними зданиями внутри квартала. */
+const PLOT = 6.8;
 
-/** Минимально приемлемая ширина проезжей части. */
-const MIN_ROAD = 4;
+/** Зданий вдоль стороны квартала. */
+const BLOCK = 4;
 
-const MAX_RING = 22;
+/** Ширина улицы. */
+const ROAD_WIDTH = 4.6;
+
+/** Шаг кварталов: квартал плюс улица. */
+const BLOCK_PITCH = BLOCK * PLOT + ROAD_WIDTH;
+
+/** Ширина тротуара по краю улицы. */
+const SIDEWALK = 1.1;
+
+/** Сколько зданий с каждой стороны центра занимает площадь. */
+const PLAZA_SPAN = 2;
+const PLAZA_MIN = 1;
+
+const MAX_BLOCK_RING = 12;
 
 /**
- * Описания зданий. Объявляются до расчёта габаритов: размеры клетки
- * выводятся из настоящей геометрии, а не задаются числом. Если кто-то
- * сделает здание шире промежутка между дорогами, это обнаружит тест,
- * а не игрок.
+ * Описания зданий. Объявляются до расчёта габаритов: размеры выводятся
+ * из настоящей геометрии, а не задаются числом.
  */
 const MODELS = defineModels();
 
 /** Наибольший габарит здания по ширине и глубине, считается из геометрии. */
 export const MAX_FOOTPRINT = measureMaxFootprint();
 
-/** Сторона клетки: участок плюс дорога, округлённая вверх. */
-export const CELL = Math.ceil(MAX_FOOTPRINT + MIN_ROAD);
+/** Пространство, остающееся между соседними зданиями внутри квартала. */
+export const PLOT_GAP = PLOT - MAX_FOOTPRINT;
 
-/** Ширина проезжей части: промежуток между соседними участками. */
-export const ROAD_WIDTH = CELL - MAX_FOOTPRINT;
+export const CELL = BLOCK_PITCH;
+export const ROAD_OFFSET = ROAD_WIDTH / 2;
 
-/** Дороги идут по границам клеток: координата (k + 0.5) * CELL. */
-export const ROAD_OFFSET = CELL / 2;
+export { BLOCK, BLOCK_PITCH, ROAD_WIDTH, SIDEWALK, PLOT };
+
+/** Есть ли у заявки свободные участки. */
+function hasFree(request) {
+  return request.slots.some((slot) => !slot);
+}
 
 /**
- * Список дорог для города радиусом в клетках.
+ * Список улиц для города из `rings` колец кварталов.
+ *
+ * Улица идёт по границе между соседними кварталами, поэтому её осевая
+ * смещена от границы на половину ширины.
  *
  * axis — вдоль какой оси тянется полоса:
- *   'z' — дорога идёт вдоль оси z (вертикальная на виде сверху),
- *   'x' — вдоль оси x (горизонтальная).
+ *   'z' — улица идёт вдоль оси z,
+ *   'x' — вдоль оси x.
  */
-export function roadsFor(rings) {
-  const span = (rings + 2) * CELL;
-  const half = ROAD_WIDTH / 2;
+/**
+ * Улицы, покрывающие застроенную часть города.
+ *
+ * reach — полуразмеры застройки по осям. Улица идёт вдоль одной оси и
+ * достаёт только до краёв города по другой: иначе поперёчные улицы
+ * уходят в пустую траву длинными хвостами.
+ *
+ * axis — вдоль какой оси тянется полоса:
+ *   'z' — улица идёт вдоль оси z,
+ *   'x' — вдоль оси x.
+ */
+export function roadsFor(reach) {
   const roads = [];
+  const limit = Math.ceil(Math.max(reach.x, reach.z) / BLOCK_PITCH) + 1;
 
-  for (let k = -rings - 1; k <= rings + 1; k += 1) {
-    const offset = (k + 0.5) * CELL;
+  for (let k = -limit; k <= limit; k += 1) {
+    // Улица проходит по границе между кварталами k и k+1. Граница
+    // центрированного квартала смещена, поэтому и осевая улицы тоже.
+    const offset = (k + 0.5) * BLOCK_PITCH - ROAD_WIDTH / 2;
 
-    roads.push({ axis: 'z', x: offset, z: 0, width: ROAD_WIDTH, length: span, half });
-    roads.push({ axis: 'x', x: 0, z: offset, width: ROAD_WIDTH, length: span, half });
+    // Улица вдоль z нужна только если справа и слева от неё есть застройка
+    if (Math.abs(offset) <= reach.x + ROAD_WIDTH) {
+      roads.push({
+        axis: 'z', x: offset, z: 0,
+        width: ROAD_WIDTH,
+        length: (reach.z + ROAD_WIDTH) * 2,
+      });
+    }
+
+    if (Math.abs(offset) <= reach.z + ROAD_WIDTH) {
+      roads.push({
+        axis: 'x', x: 0, z: offset,
+        width: ROAD_WIDTH,
+        length: (reach.x + ROAD_WIDTH) * 2,
+      });
+    }
   }
 
   return roads;
 }
 
 /**
- * Спиральная развёртка клеток от центра наружу.
- * Клетки выдаются по одной и никогда не повторяются: занятые клетки просто
- * не выдаются снова.
+ * Спиральная развёртка кварталов от центра наружу.
+ * Кварталы выдаются по одному и никогда не повторяются.
  */
-function* spiral() {
-  yield { x: 0, z: 0 };
+function* spiralBlocks() {
+  yield { bx: 0, bz: 0 };
 
-  for (let ring = 1; ring <= MAX_RING; ring += 1) {
-    for (let x = -ring; x <= ring; x += 1) yield { x, z: -ring };
-    for (let z = -ring + 1; z <= ring; z += 1) yield { x: ring, z };
-    for (let x = ring - 1; x >= -ring; x -= 1) yield { x, z: ring };
-    for (let z = ring - 1; z >= -ring + 1; z -= 1) yield { x: -ring, z };
+  for (let ring = 1; ring <= MAX_BLOCK_RING; ring += 1) {
+    for (let x = -ring; x <= ring; x += 1) yield { bx: x, bz: -ring };
+    for (let z = -ring + 1; z <= ring; z += 1) yield { bx: ring, bz: z };
+    for (let x = ring - 1; x >= -ring; x -= 1) yield { bx: x, bz: ring };
+    for (let z = ring - 1; z >= -ring + 1; z -= 1) yield { bx: -ring, bz: z };
+  }
+}
+
+/** Смещение начала квартала: центр города делит центральный квартал пополам. */
+const BLOCK_ORIGIN = -(BLOCK * PLOT) / 2;
+
+/**
+ * Все места под здания: кварталы по спирали, внутри квартала — рядами.
+ * Центральные места центрального квартала оставлены под площадь.
+ */
+function* spiralPlots() {
+  for (const { bx, bz } of spiralBlocks()) {
+    const originX = bx * BLOCK_PITCH + BLOCK_ORIGIN;
+    const originZ = bz * BLOCK_PITCH + BLOCK_ORIGIN;
+
+    for (let sz = 0; sz < BLOCK; sz += 1) {
+      for (let sx = 0; sx < BLOCK; sx += 1) {
+        const inPlaza = bx === 0 && bz === 0
+          && sx >= PLAZA_MIN && sx < PLAZA_MIN + PLAZA_SPAN
+          && sz >= PLAZA_MIN && sz < PLAZA_MIN + PLAZA_SPAN;
+        if (inPlaza) continue;
+
+        yield {
+          x: originX + sx * PLOT + PLOT / 2,
+          z: originZ + sz * PLOT + PLOT / 2,
+        };
+      }
+    }
   }
 }
 
@@ -109,40 +182,70 @@ function* spiral() {
  * Раньше позиции всех зданий вычислялись заново по количеству зданий каждого
  * типа. Из-за этого постройка одной фермы сдвигала все дома: игрок видел, как
  * жилой квартал переползает. Здесь место каждого здания запоминается навсегда,
- * а новым зданиям выдаются только свободные клетки.
+ * а новым зданиям выдаются только свободные участки.
  */
 class CityLayout {
   constructor() {
-    this.cells = spiral();
+    this.plots = spiralPlots();
     this.slots = new Map(); // тип здания -> [{ x, z, index }]
-    this.used = new Set();  // занятые клетки "gx:gz"
+    this.pending = [];       // заявки на участки, ждущие очереди
   }
 
   /**
-   * Возвращает слоты типа здания в диапазоне [from, to),
-   * выдавая новые клетки по мере необходимости.
+   * Заявляет, что типу здания нужны участки в диапазоне [from, to).
+   * Участки выдаются не сразу, а в общей очереди — иначе здания
+   * выстраивались бы сплошными районами по типу: квартал домов, рядом
+   * квартал ферм. Настоящий город смешанный.
+   *
+   * Возвращает массив, который будет заполнен после flush().
    */
-  range(key, from, to) {
+  request(key, from, to) {
     const slots = this.slots.get(key) ?? [];
 
-    for (let i = from; i < to; i += 1) {
-      if (slots[i]) continue;
+    for (let i = from; i < to; i += 1) slots[i] ??= null;
 
-      // next() отдаёт обёртку { value, done }, а сама клетка лежит в value
-      const cell = this.cells.next()?.value;
-      if (!cell) break; // город вырос за пределы сетки
-
-      this.used.add(`${cell.x}:${cell.z}`);
-      slots[i] = { x: cell.x * CELL, z: cell.z * CELL, index: i };
-    }
-
+    this.pending.push({ key, from, to, slots });
     this.slots.set(key, slots);
     return slots;
   }
 
-  /** Самая дальняя занятая клетка — по ней отводится камера. */
+  /**
+   * Раздаёт заявленные участки по кругу: каждый тип в раунде получает
+   * ровно один, поэтому типы перемежаются. Заявка, которой хватило,
+   * выпадает из круга.
+   */
+  flush() {
+    let active = this.pending.filter((req) => hasFree(req));
+
+    while (active.length > 0) {
+      let filled = 0;
+
+      for (const req of active) {
+        const index = req.slots.findIndex((slot) => !slot);
+        if (index === -1) continue;
+
+        // next() отдаёт обёртку { value, done }, а сам участок лежит в value
+        const plot = this.plots.next()?.value;
+        if (!plot) break; // город вырос за пределы сетки
+
+        req.slots[index] = { x: plot.x, z: plot.z, index };
+        filled += 1;
+      }
+
+      // Признак остановки — ноль участков за раунд. Проверять, что круг
+      // не уменьшился, нельзя: при единственной заявке он остаётся
+      // прежним, пока есть свободные участки.
+      if (filled === 0) break;
+      active = active.filter(hasFree);
+    }
+
+    this.pending = [];
+    return this;
+  }
+
+  /** Самая дальняя занятая позиция — по ней отводится камера. */
   radius() {
-    let max = CELL * 2;
+    let max = BLOCK_PITCH / 2;
     for (const slots of this.slots.values()) {
       for (const slot of slots) {
         if (!slot) continue;
@@ -151,6 +254,28 @@ class CityLayout {
       }
     }
     return max;
+  }
+
+  /**
+   * Полуразмеры застроенной области по каждой оси отдельно.
+   *
+   * Радиус считается по диагонали и заканчивается у первого здания в
+   * дальнем углу — улицы по нему выходят далеко за застройку. Для улиц
+   * нужен прямоугольный размер.
+   */
+  extent() {
+    let x = 0;
+    let z = 0;
+
+    for (const slots of this.slots.values()) {
+      for (const slot of slots) {
+        if (!slot) continue;
+        if (Number.isFinite(slot.x)) x = Math.max(x, Math.abs(slot.x));
+        if (Number.isFinite(slot.z)) z = Math.max(z, Math.abs(slot.z));
+      }
+    }
+
+    return { x: Math.max(x, BLOCK_PITCH / 2), z: Math.max(z, BLOCK_PITCH / 2) };
   }
 }
 
@@ -294,8 +419,15 @@ export class CityView {
 
     if (additions.length === 0) return this.radius;
 
-    for (const { key, from, to } of additions) {
-      const slots = this.layout.range(key, from, to);
+    // Сначала все типы заявляют нужное число участков, потом участки
+    // раздаются по кругу: иначе здания шли бы сплошными районами.
+    const requests = additions.map((add) => ({
+      ...add,
+      slots: this.layout.request(add.key, add.from, add.to),
+    }));
+    this.layout.flush();
+
+    for (const { key, from, to, slots } of requests) {
       this.#placeRange(key, slots, from, to);
     }
 
@@ -315,7 +447,11 @@ export class CityView {
     const quaternion = new THREE.Quaternion();
     const offset = new THREE.Vector3();
     const euler = new THREE.Euler();
-    const windowOffset = new THREE.Vector3(0, 0, 2.05);
+    const windowOffset = new THREE.Vector3(0, 0, MAX_FOOTPRINT / 2 + 0.1);
+
+    // Внутри квартала дома стоят вплотную, поэтому разброс ограничен
+    // зазором между участками: иначе соседи наезжали бы друг на друга.
+    const spread = Math.max(0, Math.min(0.5, PLOT_GAP / 2 - 0.2));
 
     for (let i = from; i < to; i += 1) {
       const slot = slots[i];
@@ -326,7 +462,11 @@ export class CityView {
       const facing = Math.floor(hash(key, slot.index, 1) * 4) * (Math.PI / 2);
       const jitter = hash(key, slot.index, 2);
 
-      position.set(slot.x + (jitter - 0.5) * 1.2, 0, slot.z + (jitter - 0.5) * 1.2);
+      position.set(
+        slot.x + (jitter - 0.5) * spread,
+        0,
+        slot.z + (jitter - 0.5) * spread,
+      );
       euler.set(0, facing + (hash(key, slot.index, 3) - 0.5) * 0.16, 0);
       quaternion.setFromEuler(euler);
       matrix.compose(position, quaternion, scale);
@@ -427,12 +567,15 @@ export class CityView {
   }
 
   /**
-   * Дороги: сетка по границам клеток плюс площадь в центре.
+   * Улицы между кварталами, тротуары по их краям и площадь в центре.
    *
-   * Все полосы склеиваются в одну геометрию: при большом городе это сотни
-   * полос, и отдельный вызов отрисовки на каждую был бы лишним.
+   * Тротуар — та же полоса, но шире и светлее; проезжая часть ложится
+   * поверх него. Одна полоса вместо голой дороги читается как улица,
+   * а не как вырезанная в земле канава.
    *
-   * Дороги пересобираются вместе с застройкой, поэтому их ресурсы
+   * Все полосы склеиваются в две геометрии — тротуары и проезжую часть.
+   *
+   * Улицы пересобираются вместе с застройкой, поэтому их ресурсы
    * освобождаются здесь же — иначе каждый ход оставлял бы в видеокарте
    * новую геометрию.
    */
@@ -442,18 +585,29 @@ export class CityView {
     this.radius = this.layout.radius();
     if (!Number.isFinite(this.radius)) return;
 
-    const rings = Math.ceil(this.radius / CELL);
-    const geometry = buildRoadGeometry(roadsFor(rings));
+    const extent = this.layout.extent();
+    const roads = roadsFor(extent);
 
-    const material = new THREE.MeshStandardMaterial({
-      color: COLOR.road, roughness: 0.95, metalness: 0,
-    });
+    const sidewalkWidth = roads.map((road) => ({
+      ...road,
+      width: road.width + SIDEWALK * 2,
+    }));
 
-    this.roadMesh = new THREE.Mesh(geometry, material);
-    this.roadMesh.position.y = 0.02;
+    this.sidewalkMesh = new THREE.Mesh(
+      buildRoadGeometry(sidewalkWidth),
+      new THREE.MeshStandardMaterial({ color: COLOR.sidewalk, roughness: 0.95, metalness: 0 }),
+    );
+    this.sidewalkMesh.position.y = 0.015;
+    this.sidewalkMesh.receiveShadow = true;
+
+    this.roadMesh = new THREE.Mesh(
+      buildRoadGeometry(roads),
+      new THREE.MeshStandardMaterial({ color: COLOR.road, roughness: 0.95, metalness: 0 }),
+    );
+    this.roadMesh.position.y = 0.03;
     this.roadMesh.receiveShadow = true;
 
-    this.root.add(this.roadMesh);
+    this.root.add(this.sidewalkMesh, this.roadMesh);
 
     this.#addCentralPlaza();
   }
@@ -461,27 +615,28 @@ export class CityView {
   /**
    * Площадь в центре города.
    *
-   * Без неё перекрёсток в центре выглядит пусто. Круглая площадь шире
-   * дороги и служит视觉 ориентиром при первом запуске.
+   * Занимает место, оставленное под неё в центральном квартале, поэтому
+   * здания туда не встают.
    */
   #addCentralPlaza() {
-    const radius = CELL * 0.52;
-    const geometry = new THREE.CircleGeometry(radius, 24);
+    // Площадь занимает середину центрального квартала: четыре отложенных
+    // места образуют квадрат со стороной 2 * PLOT, круг в него вписывается
+    const radius = PLOT * 0.95;
+    const geometry = new THREE.CircleGeometry(radius, 28);
     geometry.rotateX(-Math.PI / 2);
 
-    const material = new THREE.MeshStandardMaterial({
-      color: COLOR.plaza, roughness: 0.9, metalness: 0,
-    });
-
-    this.plazaMesh = new THREE.Mesh(geometry, material);
-    this.plazaMesh.position.y = 0.03;
+    this.plazaMesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({ color: COLOR.plaza, roughness: 0.9, metalness: 0 }),
+    );
+    this.plazaMesh.position.y = 0.035;
     this.plazaMesh.receiveShadow = true;
 
     this.root.add(this.plazaMesh);
   }
 
   #disposeRoads() {
-    for (const key of ['roadMesh', 'plazaMesh']) {
+    for (const key of ['sidewalkMesh', 'roadMesh', 'plazaMesh']) {
       const node = this[key];
       if (!node) continue;
 
