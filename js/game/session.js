@@ -66,6 +66,9 @@ export class Session {
       state: this.state.serialize(),
       chronicle: this.chronicle.serialize(),
       rng: this.rng.serialize(),
+      // Список выборов сохраняем как он показан: пересборка после загрузки
+      // тянула бы rng с другого места и меняла бы набор (налог то пропадал, то появлялся)
+      choices: this.choices,
     });
   }
 
@@ -87,7 +90,14 @@ export class Session {
     this.engine = new Engine(this.state, this.rng, this.bus);
     this.chronicle.restore(saved.chronicle);
 
-    this.refreshChoices();
+    // Показываем тот же список, что был до перезагрузки. Если его нет
+    // (старое сохранение), собираем заново.
+    if (Array.isArray(saved.choices) && saved.choices.length > 0) {
+      this.choices = saved.choices;
+      this.bus.emit(EVENTS.CHOICES_CHANGED, this.choices);
+    } else {
+      this.refreshChoices();
+    }
     this.bus.emit(EVENTS.GAME_STARTED, { restored: true, state: this.state.data });
     this.bus.emit(EVENTS.STATE_CHANGED, this.state.data);
     return true;

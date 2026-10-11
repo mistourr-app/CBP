@@ -97,6 +97,7 @@ class App {
   #closePopup() {
     this.session.engine.dismissPopup();
     this.session.refreshChoices();
+    this.session.save();
     this.#syncPopup();
     this.choices.render(this.session.choices);
   }
