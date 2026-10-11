@@ -3,20 +3,25 @@
 //
 // Регистрация вызывается из js/core/pwa.js. Здесь только кэширование.
 //
-// Что исправлено относительно прототипа:
-//   * Кэшировались абсолютные пути ('/', '/index.html', '/js/...'). При
-//     публикации на GitHub Pages из подпапки /CBP/ эти пути указывают внутрь
-//     чужого домена и ничего не находят. Теперь пути считаются от расположения
-//     самого service worker.
-//   * Для всего подряд применялся cache-first: как только файл попадал в кэш,
-//     обновления не было никогда. Теперь HTML и навигация обновляются через
-//     сеть, а статика отдаётся из кэша и обновляется в фоне.
-//   * В коде оставались обработчики push и periodicSync, на которые никто не
+// Главное решение: для файлов игры сначала обращаемся к сети, и только
+// если она недоступна — берём из кэша. Раньше было наоборот (сначала
+// кэш), из-за чего браузер месяцами держал старую версию: чтобы увидеть
+// правку, приходилось дважды перезагружать страницу. Теперь файл на
+// диске всегда свежий, а из кэша читается только офлайн.
+//
+// Кэш обновляется при каждом успешном запросе, поэтому отдельная версия
+// кэша не нужна: она менялась вручную и однажды забылась.
+//
+// Что исправлено относительно исходного прототипа:
+//   * кэшировались абсолютные пути ('/', '/js/...'). При публикации на
+//     GitHub Pages из подпапки /CBP/ эти пути указывают внутрь чужого
+//     домена и ничего не находят. Теперь пути считаются от расположения
+//     самого service worker;
+//   * остались обработчики push и periodicSync, на которые никто не
 //     подписывался.
 // ============================================================================
 
-const VERSION = 'v2';
-const CACHE_NAME = `cbp-${VERSION}`;
+const CACHE_NAME = 'cbp-game';
 
 // Относительные пути — работают и на домене, и в подпапке /CBP/
 const PRECACHE = [
@@ -55,22 +60,23 @@ const PRECACHE = [
   './js/ui/stats.js',
 ];
 
+const OFFLINE_MESSAGE =
+  'Игра недоступна офлайн: ещё не было успешного запуска при подключённой сети.';
+
 // --- Установка --------------------------------------------------------------
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    // addAll падает целиком при любой ошибке: кладём файлы по одному,
-    // чтобы одна недостающая картинка не сломала офлайн-режим целиком
-    await Promise.all(
-      PRECACHE.map(async (url) => {
-        try {
-          await cache.add(new Request(url, { cache: 'reload' }));
-        } catch (error) {
-          console.warn('[sw] не удалось закэшировать', url, error);
-        }
-      }),
-    );
+    // Файлы кладём по одному: одна недостающая картинка не должна
+    // помешать включить офлайн-режим целиком
+    await Promise.all(PRECACHE.map(async (url) => {
+      try {
+        await cache.add(new Request(url, { cache: 'reload' }));
+      } catch (error) {
+        console.warn('[sw] не удалось закэшировать', url, error);
+      }
+    }));
     await self.skipWaiting();
   })());
 });
@@ -81,7 +87,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(
-      keys.filter((key) => key.startsWith('cbp-') && key !== CACHE_NAME)
+      keys
+        .filter((key) => key !== CACHE_NAME)
         .map((key) => caches.delete(key)),
     );
     await self.clients.claim();
@@ -98,20 +105,18 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Навигация: сначала сеть, при ошибке — кэш и, в крайнем случае, оболочка.
-  // Иначе пользователь был бы навсегда заперт в первой загруженной версии.
+  // Навигация: сеть, затем кэш оболочки, затем понятное сообщение
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
       try {
         const fresh = await fetch(request);
-        const cache = await caches.open(CACHE_NAME);
-        cache.put('./index.html', fresh.clone());
+        if (fresh.ok) cache.put('./index.html', fresh.clone());
         return fresh;
       } catch {
-        const cache = await caches.open(CACHE_NAME);
         return (await cache.match('./index.html'))
           ?? (await cache.match('./'))
-          ?? new Response('Игра недоступна офлайн', {
+          ?? new Response(OFFLINE_MESSAGE, {
             status: 503,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },
           });
@@ -120,27 +125,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Статика: сначала кэш, обновление в фоне
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(request);
 
-    const network = fetch(request)
-      .then((response) => {
-        if (response.ok && response.type === 'basic') {
-          cache.put(request, response.clone());
-        }
-        return response;
-      })
-      .catch(() => null);
+    try {
+      // Сеть первой: на сервере всегда актуальная версия файла
+      const fresh = await fetch(request);
+      if (fresh.ok && fresh.type === 'basic') {
+        cache.put(request, fresh.clone());
+      }
+      return fresh;
+    } catch {
+      // Офлайн: отдаём последнее сохранённое
+      const cached = await cache.match(request);
+      if (cached) return cached;
 
-    if (cached) {
-      network.catch(() => null);
-      return cached;
+      // Путь мог быть записан относительно корня — ищем по имени файла
+      const fallback = await cache.match(`./${url.pathname.split('/').pop()}`);
+      return fallback ?? new Response('', { status: 504 });
     }
-
-    const fresh = await network;
-    return fresh ?? new Response('', { status: 504 });
   })());
 });
 

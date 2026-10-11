@@ -36,6 +36,7 @@ export class StatsPanel {
     this.cityName = el('#city-name');
     this.chipDay = el('#chip-day');
     this.chipSeason = el('#chip-season');
+    this.chipBuild = el('#chip-build');
     this.metersRoot = el('#meters');
     this.resourcesRoot = el('#resources');
 
@@ -113,6 +114,7 @@ export class StatsPanel {
     this.cityName.textContent = state.cityName;
     this.chipDay.textContent = `День ${state.day} · год ${state.year}`;
     this.chipSeason.textContent = `${state.season.icon} ${state.season.name}`;
+    this.chipBuild.textContent = BALANCE.meta.build;
 
     this.#updateMeters(state);
     this.#updateResources(state, daily);

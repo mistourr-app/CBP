@@ -33,6 +33,8 @@ try {
 
   check(Boolean(app), 'игра запустилась');
   check(!doc.querySelector('.fatal-error'), 'нет фатальной ошибки');
+  check(doc.querySelector('#chip-build')?.textContent?.length > 0,
+        'видна метка сборки', doc.querySelector('#chip-build')?.textContent ?? '');
 
   // -- Показатели ---------------------------------------------------------
   const meters = [...doc.querySelectorAll('.meter')].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
@@ -67,18 +69,40 @@ try {
         `${Math.round(widest)} / ${Math.round(box.right)}`);
   check(box.height < 90, 'полоса ресурсов низкая', `${Math.round(box.height)}px`);
 
-  // -- Порядок секций ----------------------------------------------------
+  // -- Две части: верх прижат к верху, низ — к низу -----------------------
   const order = [...doc.querySelectorAll('#ui-overlay > *')].map((n) => n.className.split(' ')[0]);
-  check(order.indexOf('chronicle-panel') < order.indexOf('choices-panel'),
-        'хроника над выборами', order.join(' → '));
-  check(order.at(-1) === 'choices-panel', 'выборы в самом низу', order.join(' → '));
+  check(order.join(' → ') === 'top-bar → meters → resources → chronicle-panel → choices-panel',
+        'порядок секций', order.join(' → '));
 
-  const chronicleBox = doc.querySelector('.chronicle-panel').getBoundingClientRect();
-  const choicesBox = doc.querySelector('.choices-panel').getBoundingClientRect();
-  const viewportH = frame.contentWindow.innerHeight;
-  check(chronicleBox.bottom <= choicesBox.top + 1, 'хроника не залезает на выборы');
-  check(Math.abs(choicesBox.bottom - viewportH) < 24, 'выборы прижаты к низу экрана',
-        `${Math.round(viewportH - choicesBox.bottom)}px снизу`);
+  const top = doc.querySelector('#ui-overlay').getBoundingClientRect();
+  const bar = doc.querySelector('.top-bar').getBoundingClientRect();
+  const metersBox = doc.querySelector('.meters').getBoundingClientRect();
+  const resBox = doc.querySelector('.resources').getBoundingClientRect();
+  const chronBox = doc.querySelector('.chronicle-panel').getBoundingClientRect();
+  const choiceBox = doc.querySelector('.choices-panel').getBoundingClientRect();
+
+  // Верхняя часть: плашка, показатели, ресурсы — сверху вниз, без зазоров
+  check(bar.top - top.top < 16, 'плашка прижата к верху', `${Math.round(bar.top - top.top)}px`);
+  check(metersBox.top > bar.bottom, 'показатели под плашкой');
+  check(resBox.top > metersBox.bottom, 'ресурсы под показателями');
+
+  // Нижняя часть: хроника, затем выборы у самого низа
+  check(chronBox.top > resBox.bottom, 'хроника ниже ресурсов');
+  check(choiceBox.top > chronBox.bottom - 1, 'выборы под хроникой');
+
+  const slackBottom = frame.contentWindow.innerHeight - choiceBox.bottom;
+  check(Math.abs(slackBottom) < 24, 'выборы прижаты к низу экрана',
+        `${Math.round(slackBottom)}px снизу`);
+
+  // Свободное место должно быть в середине — там виден город.
+  // Сверху и снизу его быть не должно.
+  const topGap = bar.top - top.top;
+  const bottomGap = frame.contentWindow.innerHeight - choiceBox.bottom;
+  const middleGap = choiceBox.top - chronBox.bottom;
+
+  check(topGap < 16, 'сверху нет пустоты', `${Math.round(topGap)}px`);
+  check(bottomGap < 24, 'снизу нет пустоты', `${Math.round(bottomGap)}px`);
+  check(middleGap >= 0, 'свободное место посередине', `${Math.round(middleGap)}px`);
 
   // -- Порядок действий ---------------------------------------------------
   const buttons = [...doc.querySelectorAll('.choice')].filter((n) => !n.hidden);

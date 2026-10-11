@@ -63,6 +63,15 @@
   white-space: nowrap;
 }
 
+/* Метка сборки: тусклая, чтобы не спорить с данными */
+.chip--build {
+  color: var(--c-text-faint);
+  background: transparent;
+  border-color: transparent;
+  font-family: var(--font-num);
+  font-size: 0.625rem;
+}
+
 /* --- Показатели --------------------------------------------------------- */
 
 .meters {
