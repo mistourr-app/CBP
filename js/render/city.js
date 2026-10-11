@@ -15,23 +15,16 @@
 // ============================================================================
 
 import * as THREE from '../../vendor/three.module.min.js';
-import { BALANCE, BUILDING_KEYS } from '../balance.js';
+import { BUILDING_KEYS } from '../balance.js';
 import { COLOR } from './palette.js';
 
 const CELL = 9;
 const MAX_RING = 22;
 
-/** Порядок застройки: сначала центральные здания, потом жилые кварталы. */
-const FILL_ORDER = [
-  'temples', 'markets', 'schools',
-  'farms', 'lumberMills', 'quarries',
-  'walls', 'towers',
-  'houses',
-];
-
 /**
  * Спиральная развёртка клеток от центра наружу.
- * Детерминированная: одна и та же застройка всегда даёт одну и ту же карту.
+ * Клетки выдаются по одной и никогда не повторяются: занятые клетки просто
+ * не выдаются снова.
  */
 function* spiral() {
   yield { x: 0, z: 0 };
@@ -44,130 +37,131 @@ function* spiral() {
   }
 }
 
-function buildLayout(counts) {
-  const cells = spiral();
-  const layout = {};
+/**
+ * Раскладка растёт постепенно и не пересобирается заново.
+ *
+ * Раньше позиции всех зданий вычислялись заново по количеству зданий каждого
+ * типа. Из-за этого постройка одной фермы сдвигала все дома: игрок видел, как
+ * жилой квартал переползает. Здесь место каждого здания запоминается навсегда,
+ * а новым зданиям выдаются только свободные клетки.
+ */
+class CityLayout {
+  constructor() {
+    this.cells = spiral();
+    this.slots = new Map(); // тип здания -> [{ x, z, index }]
+    this.used = new Set();  // занятые клетки "gx:gz"
+  }
 
-  for (const key of FILL_ORDER) {
-    const count = counts[key] ?? 0;
-    if (!count) continue;
+  /**
+   * Возвращает слоты типа здания в диапазоне [from, to),
+   * выдавая новые клетки по мере необходимости.
+   */
+  range(key, from, to) {
+    const slots = this.slots.get(key) ?? [];
 
-    const slots = [];
-    for (let i = 0; i < count; i += 1) {
-      const cell = cells.next();
+    for (let i = from; i < to; i += 1) {
+      if (slots[i]) continue;
+
+      // next() отдаёт обёртку { value, done }, а сама клетка лежит в value
+      const cell = this.cells.next()?.value;
       if (!cell) break; // город вырос за пределы сетки
-      slots.push({ x: cell.x * CELL, z: cell.z * CELL, index: i });
+
+      this.used.add(`${cell.x}:${cell.z}`);
+      slots[i] = { x: cell.x * CELL, z: cell.z * CELL, index: i };
     }
-    if (slots.length) layout[key] = slots;
+
+    this.slots.set(key, slots);
+    return slots;
   }
 
-  return layout;
-}
-
-/** Радиус, до которого нужно отвести камеру. */
-function layoutRadius(layout) {
-  let max = 0;
-  for (const slots of Object.values(layout)) {
-    for (const slot of slots) {
-      max = Math.max(max, Math.hypot(slot.x, slot.z));
+  /** Самая дальняя занятая клетка — по ней отводится камера. */
+  radius() {
+    let max = CELL * 2;
+    for (const slots of this.slots.values()) {
+      for (const slot of slots) {
+        if (!slot) continue;
+        const distance = Math.hypot(slot.x, slot.z);
+        if (Number.isFinite(distance)) max = Math.max(max, distance);
+      }
     }
+    return max;
   }
-  return max;
 }
 
 // ---------------------------------------------------------------------------
 // Описания зданий: геометрия и материал каждой части
 // ---------------------------------------------------------------------------
 
-function material(color, options = {}) {
-  return new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...options });
-}
-
 function defineModels() {
-  const roof = (color) => {
-    const g = new THREE.ConeGeometry(3.6, 2.2, 4);
-    g.rotateY(Math.PI / 4);
-    return { geometry: g, material: material(color) };
-  };
-
   const box = (w, h, d, color, y = h / 2) => {
     const g = new THREE.BoxGeometry(w, h, d);
     g.translate(0, y, 0);
-    return { geometry: g, material: material(color) };
+    return { geometry: g, color };
   };
 
   return {
     houses: {
       parts: [
         box(4.4, 3.2, 4.4, 0xa8703f),
-        { geometry: new THREE.ConeGeometry(3.9, 2.4, 4), material: material(0x7a3f2a), offsetY: 4.4 },
-        { ...box(1.5, 0.9, 0.12, 0xffe6a3, 2.0), window: true },
-        { ...box(0.12, 0.9, 1.5, 0xffe6a3, 2.0), window: true },
+        { geometry: new THREE.ConeGeometry(3.9, 2.4, 4), color: 0x7a3f2a, offsetY: 4.4 },
+        { ...box(1.5, 0.9, 0.12, 0xffdca0, 2.0), window: true },
+        { ...box(0.12, 0.9, 1.5, 0xffdca0, 2.0), window: true },
       ],
-      scale: 0.95,
     },
     farms: {
       parts: [
         box(5.4, 2.6, 4.0, 0x8d5a33),
-        { geometry: new THREE.ConeGeometry(3.9, 1.8, 4), material: material(0x5d3a22), offsetY: 3.5 },
+        { geometry: new THREE.ConeGeometry(3.9, 1.8, 4), color: 0x5d3a22, offsetY: 3.5 },
         box(6.6, 0.14, 5.2, 0x6f8f3a, 0.07), // поле
       ],
-      scale: 1,
     },
     lumberMills: {
       parts: [
         box(5.0, 2.4, 3.8, 0x7d5a38),
-        { geometry: new THREE.ConeGeometry(3.6, 1.8, 4), material: material(0x4a3524), offsetY: 3.3 },
+        { geometry: new THREE.ConeGeometry(3.6, 1.8, 4), color: 0x4a3524, offsetY: 3.3 },
         { ...box(0.2, 2.4, 0.2, 0x8b5e3c, 1.2), rotation: [0, 0, 0.35] },
         { ...box(0.2, 2.4, 0.2, 0x8b5e3c, 1.2), rotation: [0, 0, -0.35] },
       ],
-      scale: 1,
     },
     quarries: {
       parts: [
-        box(4.6, 1.0, 4.0, COLOR.stone),
-        { geometry: new THREE.IcosahedronGeometry(1.7, 0), material: material(0x707a8c, { flatShading: true }), offsetY: 1.3 },
+        box(4.6, 1.0, 4.0, 0x8d94a5),
+        { geometry: new THREE.IcosahedronGeometry(1.7, 0), color: 0x707a8c, offsetY: 1.3 },
         { ...box(0.25, 1.6, 0.25, 0x6b4a2f, 0.8), rotation: [0, 0, 0.3] },
       ],
-      scale: 1,
     },
     markets: {
       parts: [
         box(6.0, 3.0, 4.6, 0xb5794a),
-        { geometry: new THREE.BoxGeometry(6.6, 0.22, 5.2), material: material(0x8f4d33), offsetY: 3.5 },
-        { ...box(1.2, 1.8, 0.12, 0xffd9a0, 1.5), window: true },
+        { geometry: new THREE.BoxGeometry(6.6, 0.22, 5.2), color: 0x8f4d33, offsetY: 3.5 },
+        { ...box(1.2, 1.8, 0.12, 0xffdca0, 1.5), window: true },
       ],
-      scale: 1,
     },
     temples: {
       parts: [
         box(5.6, 3.4, 4.6, 0xe6dcc2),
         box(4.2, 1.4, 3.4, 0xd8ccae, 4.1),
-        { geometry: new THREE.ConeGeometry(2.8, 2.6, 8), material: material(0xd8a93a, { metalness: 0.35, roughness: 0.4 }), offsetY: 6.1 },
+        { geometry: new THREE.ConeGeometry(2.8, 2.6, 8), color: 0xd8a93a, offsetY: 6.1 },
       ],
-      scale: 1,
     },
     schools: {
       parts: [
         box(5.6, 2.8, 4.0, 0xc9a066),
-        { geometry: new THREE.BoxGeometry(6.0, 0.2, 4.4), material: material(0x8a6a3f), offsetY: 3.2 },
+        { geometry: new THREE.BoxGeometry(6.0, 0.2, 4.4), color: 0x8a6a3f, offsetY: 3.2 },
         { ...box(1.6, 1.0, 0.12, 0xbfe0ff, 1.8), window: true },
       ],
-      scale: 1,
     },
     walls: {
       parts: [
-        { geometry: new THREE.BoxGeometry(CELL + 0.6, 3.0, 1.4), material: material(0x8a8f9c) },
+        { geometry: new THREE.BoxGeometry(CELL + 0.6, 3.0, 1.4), color: 0x8a8f9c },
       ],
-      scale: 1,
     },
     towers: {
       parts: [
-        { geometry: new THREE.CylinderGeometry(1.9, 2.3, 0.8, 10), material: material(0x7c8290), offsetY: 0.4 },
-        { geometry: new THREE.CylinderGeometry(1.3, 1.5, 7.0, 10), material: material(0x9aa0ad), offsetY: 4.3 },
-        { geometry: new THREE.ConeGeometry(1.9, 2.4, 10), material: material(0x5d6470), offsetY: 9.0 },
+        { geometry: new THREE.CylinderGeometry(1.9, 2.3, 0.8, 10), color: 0x7c8290, offsetY: 0.4 },
+        { geometry: new THREE.CylinderGeometry(1.3, 1.5, 7.0, 10), color: 0x9aa0ad, offsetY: 4.3 },
+        { geometry: new THREE.ConeGeometry(1.9, 2.4, 10), color: 0x5d6470, offsetY: 9.0 },
       ],
-      scale: 1,
     },
   };
 }
@@ -184,41 +178,64 @@ export class CityView {
     this.models = defineModels();
     this.meshes = new Map();
     this.windowMeshes = new Map();
+    this.layout = new CityLayout();
+    this.capacity = new Map();
     this.counts = {};
     this.radius = 0;
     this.roadMesh = null;
     this.geometries = [];
     this.materials = [];
+
+    // Один материал на все здания: цвет приходит из вершинных цветов,
+    // поэтому крыша и стены одного дома остаются разными
+    this.shellMaterial = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.85,
+      metalness: 0.02,
+    });
+    this.windowMaterial = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      emissive: 0xffcc66,
+      emissiveIntensity: 0,
+      roughness: 0.4,
+    });
+    this.materials.push(this.shellMaterial, this.windowMaterial);
   }
 
   /**
    * Синхронизирует 3D-город с состоянием игры.
-   * Перестраиваются только те типы зданий, у которых изменилось количество.
+   *
+   * Сначала обновляются счётчики, потом пересчитывается раскладка, и только
+   * затем расставляются здания. Обратный порядок дал бы пустую раскладку для
+   * только что добавленных зданий — они получили бы матрицу, но остались бы
+   * в начале координат.
+   *
+   * Перестраиваются только типы зданий, у которых изменилось количество.
    */
   sync(buildings) {
-    let changed = false;
+    const additions = [];
 
     for (const key of BUILDING_KEYS) {
       const target = buildings[key] ?? 0;
-      if (this.counts[key] === target) continue;
+      const current = this.counts[key] ?? 0;
+      if (current === target) continue;
 
-      if (target > (this.counts[key] ?? 0)) this.#addFrom(key, this.counts[key] ?? 0, target);
+      if (target > current) additions.push({ key, from: current, to: target });
       this.counts[key] = target;
-      changed = true;
     }
 
-    if (changed) this.#rebuildRoads();
+    if (additions.length === 0) return this.radius;
+
+    for (const { key, from, to } of additions) {
+      const slots = this.layout.range(key, from, to);
+      this.#placeRange(key, slots, from, to);
+    }
+
+    this.#rebuildRoads();
     return this.radius;
   }
 
-  #layout() {
-    return buildLayout(this.counts);
-  }
-
-  #addFrom(key, from, to) {
-    const layout = this.#layout();
-    const slots = layout[key] ?? [];
-
+  #placeRange(key, slots, from, to) {
     this.#ensureMeshes(key, to);
 
     const mesh = this.meshes.get(key);
@@ -228,8 +245,9 @@ export class CityView {
     const position = new THREE.Vector3();
     const scale = new THREE.Vector3(1, 1, 1);
     const quaternion = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
+    const offset = new THREE.Vector3();
     const euler = new THREE.Euler();
+    const windowOffset = new THREE.Vector3(0, 0, 2.05);
 
     for (let i = from; i < to; i += 1) {
       const slot = slots[i];
@@ -248,108 +266,145 @@ export class CityView {
 
       if (this.windowMeshes.has(key)) {
         const windows = this.windowMeshes.get(key);
-        // Окна ставим чуть наружу от стен, иначе они утоплены в геометрии
+        // Окна ставим чуть снаружи от стен, иначе они утоплены в геометрии
         euler.set(0, facing + Math.PI / 2, 0);
         quaternion.setFromEuler(euler);
-        matrix.compose(
-          position.clone().add(new THREE.Vector3(0, 0, 2.05)),
-          quaternion,
-          scale,
-        );
+        offset.copy(position).add(windowOffset);
+        matrix.compose(offset, quaternion, scale);
         windows.setMatrixAt(i, matrix);
       }
     }
 
     mesh.count = to;
     mesh.instanceMatrix.needsUpdate = true;
-    if (this.windowMeshes.has(key)) {
-      this.windowMeshes.get(key).count = to;
-      this.windowMeshes.get(key).instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+
+    const windows = this.windowMeshes.get(key);
+    if (windows) {
+      windows.count = to;
+      windows.instanceMatrix.needsUpdate = true;
+      windows.computeBoundingSphere();
     }
   }
 
   #ensureMeshes(key, capacity) {
-    if (this.meshes.has(key)) return;
+    const existing = this.meshes.get(key);
+    // InstancedMesh создаётся на фиксированное число экземпляров, поэтому
+    // при росте города сетку пересоздаём
+    if (existing && this.capacity[key] >= capacity) return;
+
+    // Матрицы уже расставленных зданий переживают пересоздание: без копии
+    // все ранее построенные здания прыгнули бы в начало координат.
+    // getMatrixAt ничего не возвращает, поэтому читаем в цикле.
+    const carried = [];
+    const carriedWindows = [];
+
+    if (existing) {
+      for (let i = 0; i < existing.count; i += 1) {
+        const matrix = new THREE.Matrix4();
+        existing.getMatrixAt(i, matrix);
+        carried.push(matrix);
+      }
+
+      const previousWindows = this.windowMeshes.get(key);
+      if (previousWindows) {
+        for (let i = 0; i < previousWindows.count; i += 1) {
+          const matrix = new THREE.Matrix4();
+          previousWindows.getMatrixAt(i, matrix);
+          carriedWindows.push(matrix);
+        }
+      }
+
+      this.root.remove(existing);
+      if (previousWindows) this.root.remove(previousWindows);
+      existing.dispose();
+      previousWindows?.dispose();
+    }
 
     const model = this.models[key];
-    const parts = model.parts;
-    const windowParts = parts.filter((part) => part.window);
-    const solidParts = parts.filter((part) => !part.window);
+    const solidParts = model.parts.filter((part) => !part.window);
+    const windowParts = model.parts.filter((part) => part.window);
 
-    const material = solidParts[0].material;
-    const merged = mergeGeometries(solidParts);
-    this.geometries.push(merged);
-    this.materials.push(material);
+    const geometry = mergeGeometries(solidParts);
+    this.geometries.push(geometry);
 
-    const mesh = new THREE.InstancedMesh(merged, material, Math.max(capacity, 1));
+    const capacityNext = Math.max(capacity + 6, 12);
+    const mesh = new THREE.InstancedMesh(geometry, this.shellMaterial, capacityNext);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.count = 0;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
 
+    carried.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+    mesh.instanceMatrix.needsUpdate = true;
+
     this.meshes.set(key, mesh);
+    this.capacity[key] = capacityNext;
     this.root.add(mesh);
 
     if (windowParts.length) {
       const windowGeometry = mergeGeometries(windowParts);
-      const windowMaterial = new THREE.MeshStandardMaterial({
-        color: 0x2b2f3d,
-        emissive: 0xffcc66,
-        emissiveIntensity: 0,
-        roughness: 0.4,
-      });
       this.geometries.push(windowGeometry);
-      this.materials.push(windowMaterial);
 
-      const windows = new THREE.InstancedMesh(windowGeometry, windowMaterial, Math.max(capacity, 1));
+      const windows = new THREE.InstancedMesh(windowGeometry, this.windowMaterial, capacityNext);
       windows.count = 0;
-      windows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       windows.frustumCulled = false;
+
+      carriedWindows.forEach((matrix, index) => windows.setMatrixAt(index, matrix));
+      windows.instanceMatrix.needsUpdate = true;
 
       this.windowMeshes.set(key, windows);
       this.root.add(windows);
     }
   }
 
-  /** Дороги: крест в центре плюс кольцо по границе застройки. */
+  /**
+   * Дороги: крест в центре города.
+   *
+   * Дорога пересобирается вместе с застройкой, поэтому её ресурсы
+   * освобождаются здесь же — иначе каждый ход оставлял бы в видеокарте
+   * новую геометрию и материал.
+   */
   #rebuildRoads() {
-    if (this.roadMesh) {
-      this.root.remove(this.roadMesh);
-      this.roadMesh.geometry.dispose();
-      this.roadMesh.material.dispose();
-      this.roadMesh = null;
-    }
+    this.#disposeRoads();
 
-    const radius = layoutRadius(this.#layout());
-    this.radius = Math.max(radius, CELL * 2);
+    this.radius = this.layout.radius();
     if (!Number.isFinite(this.radius)) return;
 
+    const geometry = new THREE.BoxGeometry(this.radius * 2 + CELL * 3, 0.08, CELL * 0.62);
     const material = new THREE.MeshStandardMaterial({
       color: COLOR.road, roughness: 0.95, metalness: 0,
     });
-    this.materials.push(material);
-
-    const size = this.radius + CELL * 3;
-    const geometry = new THREE.BoxGeometry(size, 0.08, CELL * 0.62);
-    this.geometries.push(geometry);
 
     const cross = new THREE.Group();
 
     const horizontal = new THREE.Mesh(geometry, material);
     horizontal.position.y = 0.02;
+    horizontal.receiveShadow = true;
     cross.add(horizontal);
 
     const vertical = new THREE.Mesh(geometry, material);
     vertical.rotation.y = Math.PI / 2;
     vertical.position.y = 0.02;
-    cross.add(vertical);
-
     vertical.receiveShadow = true;
-    horizontal.receiveShadow = true;
+    cross.add(vertical);
 
     this.roadMesh = cross;
     this.root.add(cross);
+  }
+
+  #disposeRoads() {
+    if (!this.roadMesh) return;
+
+    this.root.remove(this.roadMesh);
+
+    // Геометрия и материал общие для двух балок, поэтому освобождаем один раз
+    this.roadMesh.traverse((node) => {
+      if (node.geometry) node.geometry.dispose();
+      if (node.material) node.material.dispose();
+    });
+
+    this.roadMesh = null;
   }
 
   /** Окна загораются ночью. */
@@ -360,20 +415,26 @@ export class CityView {
   }
 
   dispose() {
+    this.#disposeRoads();
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
   }
 }
 
 /**
- * Склейка частей здания в одну геометрию.
- * Требует одинакового набора атрибутов, поэтому все части создаются
- * через одинаковые примитивы.
+ * Склейка частей здания в одну геометрию с вершинными цветами.
+ *
+ * Разные части одного здания имеют разные цвета (стены, крыша, окна), но
+ * для отрисовки достаточно одного вызова. Поэтому цвет каждой части
+ * переносится в атрибут color, а материал работает с vertexColors.
+ * Принимает часть как { geometry, color }.
  */
 function mergeGeometries(parts) {
   const positions = [];
   const normals = [];
+  const colors = [];
   const indices = [];
+  const color = new THREE.Color();
   let offset = 0;
 
   for (const part of parts) {
@@ -390,13 +451,18 @@ function mergeGeometries(parts) {
     const norm = geometry.attributes.normal;
     const index = geometry.index;
 
+    color.set(part.color ?? 0xffffff);
+
     for (let i = 0; i < pos.count; i += 1) {
       positions.push(pos.getX(i), pos.getY(i), pos.getZ(i));
       normals.push(norm.getX(i), norm.getY(i), norm.getZ(i));
+      colors.push(color.r, color.g, color.b);
     }
+
     if (index) {
       for (let i = 0; i < index.count; i += 1) indices.push(index.getX(i) + offset);
     } else {
+      // IcosahedronGeometry и подобные примитивы идут без индекса
       for (let i = 0; i < pos.count; i += 1) indices.push(i + offset);
     }
     offset += pos.count;
@@ -406,7 +472,9 @@ function mergeGeometries(parts) {
   const merged = new THREE.BufferGeometry();
   merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  merged.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   merged.setIndex(indices);
+  merged.computeBoundingSphere();
   return merged;
 }
 

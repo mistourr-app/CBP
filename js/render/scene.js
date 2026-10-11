@@ -212,8 +212,6 @@ export class SceneView {
 
     this.skyUniforms.topColor.value.copy(palette.skyTop);
     this.skyUniforms.bottomColor.value.copy(palette.skyBottom);
-    this.sky.material.uniforms.topColor.value = palette.skyTop;
-    this.sky.material.uniforms.bottomColor.value = palette.skyBottom;
 
     this.sun.color.copy(palette.sun);
     this.sun.intensity = palette.sunPower;

@@ -52,7 +52,7 @@ export class ChoicesPanel {
       }
 
       button.hidden = false;
-      button.disabled = !choice.affordable || this.locked;
+      button.disabled = this.locked || !choice.affordable;
       button.classList.toggle('choice--wait', Boolean(choice.isWait));
       // textContent, а не innerHTML: сюда попадает игровой текст
       icon.textContent = choice.icon;
@@ -63,11 +63,12 @@ export class ChoicesPanel {
     }
   }
 
+  /**
+   * Блокировка на время хода. Просто ставит флаг: перерисовка происходит
+   * в render(), который сам учитывает флаг и оплату.
+   */
   setLocked(locked) {
     this.locked = locked;
-    for (const { button, } of this.buttons) {
-      button.disabled = locked || !this.current[0];
-    }
-    if (!locked) this.render(this.current);
+    this.render(this.current);
   }
 }

@@ -56,6 +56,7 @@ class App {
     bus.on(EVENTS.DAY_ADVANCED, () => {
       this.stats.update();
       this.chronicle.render();
+      this.choices.setLocked(false);
       this.choices.render(this.session.choices);
       this.renderer?.onCityChanged();
     });
@@ -80,26 +81,19 @@ class App {
   #takeTurn(actionId) {
     if (this.session.state.isOver) return;
 
-    // Короткая блокировка на время хода: без неё быстрый второй клик
-    // успевает начать ещё один день поверх только что начавшегося
+    // Блокировка на время хода: без неё быстрый второй клик успевает
+    // начать ещё один день поверх только что начавшегося.
+    // Снимается в подписке на DAY_ADVANCED или GAME_ENDED.
     this.choices.setLocked(true);
 
-    const { ok, note } = this.session.takeTurn(actionId);
+    const { ok } = this.session.takeTurn(actionId);
 
+    // Действие не прошло — день не сдвинулся, событий не было,
+    // поэтому разблокируем выборы вручную
     if (!ok) {
       this.screens.showToast('Недостаточно ресурсов', 'danger');
       this.choices.setLocked(false);
-      return;
     }
-
-    this.stats.update();
-    this.chronicle.render();
-    this.choices.render(this.session.choices);
-    this.renderer?.onCityChanged();
-
-    if (this.session.state.isOver) return;
-
-    this.choices.setLocked(false);
   }
 
   #bindKeyboard() {
